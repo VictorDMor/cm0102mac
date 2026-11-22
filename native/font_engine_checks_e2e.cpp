@@ -237,6 +237,12 @@ void sweep(State& s, bool original) {
                     }
                 }
             }
+        // The interpreter mode (blocks fnt_a/b/c): synthetic programs on the font's hint font, if it has one (symbol.ttf's fpgm has run).
+        if (!std::getenv("CM_FONT_ENGINE_E2E_NO_INTERPRETER"))
+            if (const auto sfnt = word(s, record + 0x10))
+                if (const auto hint = word(s, sfnt + 4))
+                    for (const auto value : run_interpreter_programs(s, hint)) put(value);
+        c.set(2, game_toc);
         call(0x10750200, {cell});
         put(0xf0f0ffffu);
     }

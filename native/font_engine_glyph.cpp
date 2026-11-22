@@ -4,7 +4,8 @@
 // composite (a list of components the caller assembles with append_glyph).
 //
 // Registers. A routine here leaves the volatile registers r4-r10 as the original does where its callers can read them
-// (0x1075c0f0 is exempt: font_engine_volatile_free.inc has the proof); the callee's saved registers are set where the original
+// (0x1075c0f0 leaves r9/r10 as its offset loop or its copy loops do: its callers' callers read them, compared with mask 0x60 in
+// font_engine_volatile_read.inc); the callee's saved registers are set where the original
 // holds them at a call that reaches a leaver (0x1075c830 here, 0x10767bb0 in the allocator).
 #include "font_engine_detail.hpp"
 
@@ -348,7 +349,7 @@ std::uint32_t new_compact_glyph(Cpu& c, std::uint32_t mem, std::uint32_t stream,
 // points added at the offset, and the destination's arrays released and replaced. Flag 0x200 (USE_MY_METRICS) leaves the new
 // arrays' two phantom points unset; without it the destination's are carried over. Without flag 2 the offset is the difference
 // of the matched points: point dx of the destination and point dy of the component. A destination whose last end point is not
-// its last point reports the assertion and goes on. Each routine's callers ignore r4-r10 (volatile_free.inc).
+// its last point reports the assertion and goes on. Each routine's callers ignore r4-r8 (r9/r10: font_engine_volatile_read.inc for 0x1075c0f0).
 void append_glyph(Cpu& c, std::uint32_t slot, std::uint32_t source, std::uint32_t flags, std::uint32_t dx, std::uint32_t dy) {
     guest::Frame frame(c, 0x1075c0f0, 0x80, {.first_gpr = 17});
     std::uint32_t r17 = flags, r18 = dx, r19 = dy, r20 = slot, r21 = c.r(21), r22 = c.r(22), r23 = c.toc(toc::glyph_pool), r24 = c.r(24),
@@ -376,6 +377,12 @@ void append_glyph(Cpu& c, std::uint32_t slot, std::uint32_t source, std::uint32_
                     const auto x = c.u32(source + glyph_record::original_xs) + at, y = c.u32(source + glyph_record::original_ys) + at;
                     c.put32(x, c.u32(x) + offset_x);
                     c.put32(y, c.u32(y) + offset_y);
+                }
+                // The unrolled-by-eight loop (more than eight points) leaves its last pass's offset constants: r10 = 0x18 + 0x20 * (passes - 1), r9 = r10 + 4
+                // (this routine's callers read r9 and r10 after it: 0x1075fa10 passes them on to its own callers).
+                if (count > 8) {
+                    const auto passes = std::uint32_t((count - 1) >> 3);
+                    c.set({{10, 0x18 + 0x20 * (passes - 1)}, {9, 0x1c + 0x20 * (passes - 1)}});
                 }
             }
         }

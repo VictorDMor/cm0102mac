@@ -288,6 +288,14 @@ FONT_ENGINE_CASES("glyph") {
                     memory.push_back(w32(slot_at, 0));
                     make(flags, dx, dy, memory, "first, flags " + hex(flags) + " offset " + hex(dx) + " " + hex(dy));
                 }
+        // The first component with more than eight points: the unrolled offset loop's last pass leaves r9 and r10 (1, 2, 3 passes).
+        for (const std::uint32_t flags : {2u, 6u, 0x202u})
+            for (const int points : {8, 9, 16, 17, 24, 25, 40}) {
+                std::vector<Write> memory;
+                base(memory, 0, 0, points, 1, true, false, true, false);
+                memory.push_back(w32(slot_at, 0));
+                make(flags, 0x35, 0x11, memory, "first, " + std::to_string(points) + " points, flags " + hex(flags) + " (unrolled loop)");
+            }
         {   // A first component without points (the count is not positive), and the null source (assertion answered).
             std::vector<Write> memory;
             base(memory, 0, 0, 0, 0, true, false, true, false);

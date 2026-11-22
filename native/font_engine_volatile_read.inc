@@ -12,3 +12,15 @@
 // which --after does not follow. These entries are compared on r9 and r10 as well; the routines whose original writes them (0x10763390 and 0x107638c0's unrolled loops,
 // 0x10763eb0, 0x107645a0, 0x10764610's pass counter, 0x10765060's flag counter, 0x10765780) leave them as it does.
 {0x107630e0, 0x60}, {0x10763390, 0x60}, {0x107638c0, 0x60}, {0x107642e0, 0x60}, {0x10764610, 0x60}, {0x107649a0, 0x60}, {0x10764b10, 0x60}, {0x10764bf0, 0x60}, {0x10764d10, 0x60}, {0x10764e50, 0x60}, {0x10764f60, 0x60}, {0x10765060, 0x60},
+// t2ksc: tools/register_contract.py --after over the direct callers (0x107620d0 and 0x107623c0 from 0x1075fa10, the others inside the block) lists r3, r9 and r10 as the only registers read
+// after a call (r4-r8 are written before any read); r9/r10 pass through the leaves, the allocator and the reporter, so every entry is compared on them (mask 0x60) and leaves them as the
+// original does (the loops of 0x107614c0, 0x10761730, 0x107620d0 and 0x107623c0, the table copy of 0x10761270 and the blends of 0x107623c0 write them). 0x10762e30 is compared in full (no entry here).
+{0x10761270, 0x60}, {0x107614c0, 0x60}, {0x10761730, 0x60}, {0x107617b0, 0x60}, {0x10761d50, 0x60}, {0x10761ec0, 0x60}, {0x107620d0, 0x60}, {0x107623c0, 0x60},
+// t2k_core: tools/register_contract.py --after over the direct callers (FONT.CPP's for the five API entries, the block's own for the rest) lists r9 and r10 (and the constructor's r3) as the only
+// registers read after a call; the callees pass r9/r10 through, and where the original writes them they are replicated (the cache fill of 0x1075eef0, the unrolled loop of 0x1075ece0, the caret routine's
+// pass counter, the arguments of the hinter and the scan converter). Every entry is compared on r9 and r10.
+{0x1075e960, 0x60}, {0x1075eb10, 0x60}, {0x1075ece0, 0x60}, {0x1075eef0, 0x60}, {0x1075f870, 0x60}, {0x1075f980, 0x60}, {0x1075fa10, 0x60}, {0x10760e30, 0x60}, {0x10760f50, 0x60},
+// glyph and truetype_glyph, corrected after the t2k_core review: 0x1075c0f0 (append_glyph) and 0x10766dc0 (caret_slopes) were listed volatile-free (their direct callers read nothing after them) but
+// they write r9 (and r10), which reach the API entries' returns through 0x1075fa10 / 0x1075eef0 and so the callers' reads: compared on r9 and r10, and the originals' loops reproduced
+// (the first component's unrolled offset loop, the copy loops of a merge; the caret's doubling pass counter when the font has an hhea).
+{0x1075c0f0, 0x60}, {0x10766dc0, 0x60},

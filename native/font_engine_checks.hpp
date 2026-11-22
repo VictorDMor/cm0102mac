@@ -58,6 +58,11 @@ struct Case {
     // An expectation checked on the final state of both runs (not of the mutated ones): false is a failure of the whole check. For what
     // the two runs can agree on and still get wrong (the bytes of a file against an independent serialization, a round trip).
     std::function<bool(State&)> verify = nullptr;
+    // Runs inside every compared run of this case (the original's, the rewrite's and each traced run), on that run's own state, before the checked call: it
+    // may build the state the entry needs by running original code (font_engine_run_original from the state's registers, the link register left as it
+    // is), which is the same on both sides. The mutation of such a case changes values the call reads from the prepared state (applied in each run
+    // after the preparation, at addresses a prepared run read).
+    std::function<void(State&)> prepare = nullptr;
     // Start with FPSCR cleared (the snapshot's has the sticky inexact bit set, which hides a missing inexact result).
     bool clear_fpscr = false;
 };
@@ -84,6 +89,8 @@ inline std::string hex(std::uint32_t value) {
 // font_engine_checks_e2e.cpp: the end-to-end comparison (see there).
 // font_engine_checks.cpp: starts the leaver check (the stack contract of the five leavers) for the run that begins at this state's stack pointer.
 void install_leaver_check(State& s);
+// font_engine_checks_fnt_e2e.cpp: the interpreter's synthetic programs on a hint font (called from the end-to-end sweep); the values to log.
+std::vector<std::uint32_t> run_interpreter_programs(State& s, std::uint32_t hint);
 int run_end_to_end(State& s, bool list_only, bool exhaustive, bool corrupt, const std::vector<std::filesystem::path>& files);
 using CaseList = std::function<void(const Scenario&, std::vector<Case>&)>;
 struct CaseBlock {

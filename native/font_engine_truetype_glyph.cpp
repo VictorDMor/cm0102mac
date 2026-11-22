@@ -187,7 +187,7 @@ std::uint32_t is_digit_glyph(Cpu& c, std::uint32_t font, std::uint32_t code) {
 // 0x10766dc0: the slopes of the caret (hhea, into `horizontal`) and of its vertical twin (vhea, into `vertical`) for the scaler: each
 // record is {+0 present, +4 ascender, +6 descender, +8 line gap, +0xa advance max, +0xc caret run, +0x10 caret rise, +0x14 and +0x16
 // the font's underline position and thickness (the horizontal one only)}; run and rise are doubled together while both stay inside
-// (-0x10000, 0x10000), at most sixteen times. (A leaf; its callers read nothing it leaves.)
+// (-0x10000, 0x10000), at most sixteen times. (A leaf; its callers' callers read r9, written below.)
 void caret_slopes(Cpu& c, std::uint32_t font, std::uint32_t horizontal, std::uint32_t vertical) {
     c.put32(vertical, 0);
     c.put32(horizontal, 0);
@@ -197,7 +197,13 @@ void caret_slopes(Cpu& c, std::uint32_t font, std::uint32_t horizontal, std::uin
     c.put16(vertical + 0x16, 0);
     c.put16(horizontal + 0x14, c.u16(font + sfnt::underline_position));
     c.put16(horizontal + 0x16, c.u16(font + sfnt::underline_thickness));
+    // r9 (read by the callers' callers, mask 0x60): the horizontal record's loop sets it to 0 and adds 3 for each completed pass of four doublings,
+    // when the font has an hhea; r10 is not written.
     const auto fill = [&](std::uint32_t record, std::uint32_t table) {
+        const bool is_horizontal = record == horizontal;
+        std::uint32_t steps = 0;
+        if (is_horizontal) c.set(9, 0);
+        const auto settle = [&] { if (is_horizontal) c.set(9, 3 * (steps / 4)); };
         c.put32(record, 1);
         c.put16(record + 4, c.u16(table + hhea::ascender));
         c.put16(record + 6, c.u16(table + hhea::descender));
@@ -207,12 +213,14 @@ void caret_slopes(Cpu& c, std::uint32_t font, std::uint32_t horizontal, std::uin
         c.put32(record + 0x10, std::uint32_t(c.i16(table + hhea::caret_slope_rise)));
         for (unsigned n = 0; n < 16; ++n) {
             const auto run = c.i32(record + 0xc);
-            if (run >= 0x10000 || run <= -0x10000) return;
+            if (run >= 0x10000 || run <= -0x10000) return settle();
             const auto rise = c.i32(record + 0x10);
-            if (rise >= 0x10000 || rise <= -0x10000) return;
+            if (rise >= 0x10000 || rise <= -0x10000) return settle();
             c.put32(record + 0xc, std::uint32_t(run) << 1);
             c.put32(record + 0x10, std::uint32_t(rise) << 1);
+            ++steps;
         }
+        settle();
     };
     if (c.u32(font + sfnt::hhea) != 0) fill(horizontal, c.u32(font + sfnt::hhea));
     if (c.u32(font + sfnt::vhea) != 0) fill(vertical, c.u32(font + sfnt::vhea));

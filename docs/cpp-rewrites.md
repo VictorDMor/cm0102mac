@@ -2957,3 +2957,33 @@ Block files: `native/font_engine_*.cpp` (`util`: the fixed-point helpers; `strea
   intersection the outline routine uses; the outline routine allocates and releases a copy through `tsi_AllocMem`/`tsi_DeAllocMem` at its own frame's sp with
   the original's r14-r31 (mirrored by its loop variables). Both pointer-called routines leave r3-r10 as the original on every path and are compared in full.
   **T2KEXTRA** (`font_engine_t2kextra.cpp`): the colour (sub-pixel) bitmap conversion for command bit 0x80, dormant for the game: cases only.
+- **FNT, first third** (`font_engine_fnt_a.cpp`, 62 routines): the TrueType interpreter's entry (0x10756310: the execution context on its frame, the size checks, a setjmp the illegal-opcode handler and a bad opcode table longjmp to with
+  0x1101 and 0x1102, the loop called through the context's `run` word), the two loops that fetch the opcode and call `table[opcode]` through the glue, the rounding, move, project and cvt functions the context and the graphic
+  state point at, and the opcodes that set vectors, reference points and zone pointers, work the stack and shift or interpolate points (ISECT, MDAP, MIAP, IUP, SHP, SHC, SHZ). Handlers are called by pointer, so each is checked from tiny
+  states built around a real hint font and by programs of opcodes run through the entry against the original; every routine with a frame builds it (SHP, SHC and SHZ read stack their helper may not have written, which reaches r8/r9 and the
+  entry's r9/r10), and the entry sets cr0 as the original's last compare leaves it because setjmp returns the condition register in r6. The game runs only the entry and the plain loop (symbol.ttf's fpgm, at load): the rest is cases with
+  100% line coverage (an instrumented copy of the library, `.local/rewrites/font_engine/fnt_a/coverage.sh`) and a source control per routine; the end-to-end run is the equivalence for what the game runs.
+- **T2KSC.C, the scan converter** (`font_engine_t2ksc.cpp`, 9 routines, the stack leavers 0x107617b0, 0x10761d50 and 0x10762e30): the converter object (`scan::`, 0x2228 bytes, the
+  allocator's scratch slot 4) holds sorted edge lists by pixel row (keyed by the x of each crossing) and, for the grey bitmap or the dropout controls, by pixel column; the outline's
+  lines (0x107617b0) and quadratic curves flattened by halving (0x10761d50, its halves on the frame's own stack) put nodes {key, next} into them (chunks of nodes from the allocator),
+  and 0x107623c0 fills the bitmap: 8-bit coverage (0x7e a full pixel, a weighted blend along y) or one bit a pixel with the two dropout passes. Every routine builds the original's frame and
+  mirrors the original's non-volatile registers in a register array (`Regs`), set before each call that saves them, so the leaver check sees the original's r15-r31 / r29-r31 at each entry
+  into a leaver; r9 and r10 are left as the original (the callers read them: `font_engine_volatile_read.inc`). The checks build the converter by running the ORIGINAL constructor inside each
+  compared run (`Case::prepare`, new in the checker; the mutation of such a case is applied after the preparation).
+- **FNT, the TrueType interpreter's opcode handlers** (`font_engine_fnt_b.cpp`: graphic state and point movement; `font_engine_fnt_c.cpp`: flow control, definitions, jump-table
+  dispatchers, MDRP/MIRP, deltas, the opcode table filler 0x1075a500 and the state tables builder 0x1075a970; the loops and the stack/arithmetic opcodes are `fnt_a`). The
+  interpreter's entry (0x10756310) builds an execution context on its stack (`interpreter::` in `font_engine_detail.hpp`) and its loops call `table[opcode]` through the
+  indirect glue with r3 = the context; the context's function words (move, project, dual project, run, cvt scaling, single width) and the state's (round, scale callback) are
+  descriptors called the same way, never switched on in place. Each handler keeps a shadow of r3-r10 (what it leaves goes to the next handler and, at the end, to the entry's
+  callers) and is compared in full. Dormant for the game except FDEF (symbol.ttf's fpgm at load), the two builders and the operand skipper: the cases run on a real hint
+  font's state in the scratch area (`font_engine_checks_fnt.hpp`), and the end-to-end sweep also runs synthetic programs through the real entry on the hint font it made of
+  symbol.ttf (`font_engine_checks_fnt_e2e.cpp`, off with `CM_FONT_ENGINE_E2E_NO_INTERPRETER`). Not in `font_engine_stack_exact.inc`: the generated callees save the
+  caller's non-volatile registers, which these handlers do not mirror (the per-reader contract leaves those bytes free).
+- **T2K.C, the scaler object** (`font_engine_t2k_core.cpp`, 9 routines; `t2k_object::` in `font_engine_detail.hpp`): the object FONT.CPP keeps per font (0x5f8 bytes: the 2x2 matrix and its identity flag, the sizes and their 16.16 scales, the glyph cache record,
+  the font's metrics rotated through the matrix, the render result) and the five API entries on it: `new_t2k` 0x1075e960, `set_transformation` 0x1075eef0 (size, unit-column matrix, metrics, the hinter's setup when asked), `purge` 0x1075f980,
+  `render_character` 0x10760e30 (the game's: cmd = 2 for the characters 0x20..0xff) and `delete_t2k` 0x10760f50, each under the setjmp of the memory object with the longjmp's transfer caught at its return (cr0 as the original's last compare left it).
+  `render_glyph` 0x1075fa10 is the renderer: the glyph by number or by character, a composite's components rendered one level down (at the composite's own depth: the original passes the caller's r29 before its increment) and merged by
+  0x1075c0f0, the points scaled to 26.6, the origin rounded to the grid, the matrix applied, then the scan converter (still its own block) and the cache of rendered bitmaps. It keeps the original's r13-r31 in an array set before every call that can
+  reach a leaver. The callers read r9 and r10 of every entry, so the caret routine and the component merge leave them as their originals do and are compared on them. The hinter (dormant for the game:
+  cmd = 2 asks for none) is called as the original calls it; its hint data buffer on the stack is copied unwritten for a font without a T2KG table (the original copies the stack's leftovers: not reproducible, dormant). Cases run on the snapshot's three
+  real scalers with poked fields, real longjmps through each entry's setjmp and the hinter's callees answered; the end-to-end run, its error sweep and nineteen source controls are in `.local/rewrites/font_engine/brief.md`.

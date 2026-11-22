@@ -19,6 +19,8 @@ inline constexpr std::int32_t scale_shift_callback = -0x3c24, scale_divide_callb
 inline constexpr std::int32_t glyph_pool = -0x3c44;    // GLYPH.C's pool: its assertion texts, the file name at +0x16
 inline constexpr std::int32_t tsimem_pool = -0x3c18;   // TSIMEM.C's pool: its assertion texts, the file name at +0x10
 inline constexpr std::int32_t t2kextra_pool = -0x3c38; // T2KEXTRA.C's pool: the assertion text at +0x80, the file name at +8
+inline constexpr std::int32_t t2ksc_pool = -0x3c34;    // T2KSC.C's pool: the assertion texts (+0, +0x1e, +0x24), the file name at +0x16
+inline constexpr std::int32_t t2k_pool = -0x3c3c;      // T2K.C's pool: the assertion texts (+0, +0x16, +0x33, +0x68), the file name at +0x10
 }
 // The assertion reporter 0x107755c0 (MAIN.CPP) takes the assertion's text, the unit's file name and the line.
 inline constexpr std::uint32_t assertion_report = 0x107755c0;
@@ -152,6 +154,52 @@ inline constexpr std::uint32_t stack = 0x00, storage = 0x04, cvt = 0x08, default
     ratio_up = 0xbc, size_flag_c8 = 0xc8, size_flag_c9 = 0xc9;
 }
 
+// The interpreter's working graphic state (the words at graphic_state::saved +0..: what the opcodes read and set; the same offsets from
+// hint_font::state; blocks fnt_b and fnt_c), the program definitions and the two tables 0x1075a970 builds.
+namespace graphic_state {
+inline constexpr std::uint32_t control_value_cut_in = 0x58, single_width_cut_in = 0x5c, single_width_value = 0x60,
+    scan_control = 0x64 /* the low half SCANCTRL's, the high half SCANTYPE's */, instruct_control = 0x68, minimum_distance = 0x6c,
+    round_function = 0x70 /* a descriptor, called through the glue (context, value, compensation) */, delta_base = 0x82 /* hw */,
+    delta_shift = 0x84 /* hw */, angle_weight = 0x86 /* hw */, ppem_scale = 0x88 /* hw, nonzero: the scale callback runs on it first */,
+    auto_flip = 0x8a /* byte */, opcode_table = 0x8c /* the block scratch points to: 256 descriptors (0x400 bytes), then trig_vectors and trig_angles */,
+    program_flags = 0xb7 /* byte: 1 rotated, 2 stretched */, trig_vectors = 0xc0 /* 20 pairs of 2.30 words */, trig_angles = 0xc4 /* 20 halfwords */,
+    current_program = 0xc9 /* byte: 0 prep, 1 fpgm */, instruction_def_count = 0xca /* hw */;
+// A function definition (8 bytes, indexed by its number, no bounds check): the start as an offset in its program, the length (hw), the program (hw);
+// an instruction definition: the same words, the program as a byte and the opcode as the byte after.
+inline constexpr std::uint32_t definition_start = 0x0, definition_length = 0x4 /* hw */, definition_program = 0x6, definition_opcode = 0x7, definition_size = 8;
+}
+// A zone (0x2c bytes, the twilight zone and the glyph zone): arrays of words (current x, y; original x, y), the unscaled original coordinates
+// (halfwords), a byte per point (on curve), the contour count (hw) and the start and end points of the contours (halfwords), a touched byte per point.
+namespace zone {
+inline constexpr std::uint32_t xs = 0x00, ys = 0x04, original_xs = 0x08, original_ys = 0x0c, unscaled_xs = 0x10, unscaled_ys = 0x14, on_curve = 0x18,
+    contour_count = 0x1c /* hw */, contour_starts = 0x20, contour_ends = 0x24, touched = 0x28 /* bit 0 x, bit 1 y */, size = 0x2c;
+inline constexpr std::uint8_t touched_x = 1, touched_y = 2;
+}
+// The execution context the interpreter's entry (0x10756310) builds on its stack and passes to every opcode handler in r3 (blocks fnt_a, fnt_b, fnt_c).
+// The loops (0x10756100 traced, 0x10756280) fetch the opcode at the instruction pointer, store it and call table[opcode] through the glue
+// with r3 = this record, then read only the instruction pointer; a handler leaves r3-r10 to whoever runs next. The function words hold
+// descriptors the handlers call through the glue (0x10781320, r12 = descriptor; the caller reloads r2 from sp+0x14 afterwards).
+namespace interpreter {
+inline constexpr std::uint32_t ip = 0x00, opcode = 0x04, zp0 = 0x08, zp1 = 0x0c, zp2 = 0x10, projection_x = 0x14 /* hw 2.14 */, projection_y = 0x16,
+    freedom_x = 0x18, freedom_y = 0x1a, dual_x = 0x1c, dual_y = 0x1e, stack_top = 0x20 /* pointer past the last value (4-byte values) */,
+    zones = 0x24 /* the zone array: twilight, then glyph */, state = 0x28 /* the graphic state (hint_font::state) */, trace = 0x2c,
+    rp0 = 0x30, rp1 = 0x34, rp2 = 0x38, round_index = 0x3c /* hw */, loop = 0x3e /* hw: repeat count less one */,
+    vector_dot = 0x40 /* hw 2.14: projection . freedom, clamped away from zero */, move = 0x44 /* (context, zone, point, delta) */,
+    project = 0x48 /* (context, dx, dy) -> length along the projection vector */, dual_project = 0x4c, run = 0x50 /* (context, start, end) */,
+    scale_cvt = 0x54 /* (context, index) -> the cvt entry scaled */, single_width = 0x58 /* (context) -> single width value scaled */;
+}
+// fnt_a: what the opcode handlers of the first third add. The context's jump buffer (0x10756310 setjmps on it; an illegal opcode and a bad
+// table longjmp to it with 0x1101 and 0x1102), and the rest of the graphic state the rounding functions and SROUND read: the mask and the
+// 2.30 period of the 45-degree rounding, the period, phase and threshold (halfwords) of the grid, the ppem the ratios were taken from.
+namespace interpreter {
+inline constexpr std::uint32_t jump_buffer = 0x5c;
+inline constexpr std::uint16_t error_illegal_opcode = 0x1101, error_bad_table = 0x1102;
+}
+namespace graphic_state {
+inline constexpr std::uint32_t ppem = 0x0c /* hw: the larger ppem */, ppem_fixed = 0x10 /* that ppem as 16.16 */,
+    round_mask = 0x74, round_period_45 = 0x78 /* 2.30 */, round_period = 0x7c /* hw */, round_phase = 0x7e /* hw */, round_threshold = 0x80 /* hw */;
+}
+
 // Routines of other blocks that still run generated, called as the original's `bl` does: through the dispatcher, with the arguments
 // they read and at the original's return address. (The allocator's C++ lands with block `tsimem`; these stay the calls until a block
 // replaces one with a direct call.) Each takes the address after the `bl`.
@@ -221,8 +269,44 @@ inline constexpr std::uint32_t contour_count = 0x36, start_points = 0x3c, end_po
 inline constexpr std::uint32_t advance_count = 0x4, advance_values = 0x10;
 }
 
+// T2KSC.C (block t2ksc): the scan converter object (0x2228 bytes, the allocator's scratch slot 4). Pixel boxes are in pixels, the point and edge
+// extents in 26.6; the lists are indexed by pixel row (row_heads, keyed by x) and pixel column (column_heads, keyed by y); a node is {key, next} and a
+// chunk holds nodes (the first is inside the object at first_chunk, 0x400 of them).
+namespace scan {
+inline constexpr std::uint32_t left = 0x00, right = 0x04, top = 0x08, bottom = 0x0c, top_raw = 0x10, left_raw = 0x14, row_bytes = 0x18, bitmap = 0x1c,
+    bounds_known = 0x20, x_min = 0x24, x_max = 0x28, y_min = 0x2c, y_max = 0x30, point_x_min = 0x34, point_x_max = 0x38, point_y_min = 0x3c, point_y_max = 0x40,
+    large = 0x44, row_slots = 0x48 /* 32 inline list heads */, row_heads = 0xc8, row_buffer = 0xcc, first_row = 0xd0, last_row = 0xd4,
+    column_slots = 0xd8 /* 32 inline list heads */, column_heads = 0x158, column_buffer = 0x15c, first_column = 0x160, last_column = 0x164,
+    cursor = 0x168, limit = 0x16c, first_chunk = 0x170 /* 0x2000 bytes */, chunk_slots = 0x2170 /* 32 inline chunk pointers */, chunks = 0x21f0,
+    chunk_capacity = 0x21f4, chunk_count = 0x21f8, depth_limit = 0x21fc, grey = 0x2200 /* byte */, dropout_rows = 0x2201 /* byte */,
+    dropout_columns = 0x2202 /* byte */, columns = 0x2203 /* byte: the column lists are built */, found_x = 0x2204, found_y = 0x2208,
+    contour_starts = 0x220c, contour_ends = 0x2210, contour_count = 0x2214 /* hw */, xs = 0x2218, ys = 0x221c, on_curve = 0x2220, mem = 0x2224, size = 0x2228;
+}
+
 // T2KEXTRA: the scaler record's (0x5f8, the T2K object) render result fields the colour conversion rewrites.
 namespace extra {
 inline constexpr std::uint32_t mem_at = 0x4, left_at = 0xa8, margin_at = 0xc4, width_at = 0xd0, height_at = 0xd4, stride_at = 0xd8, bitmap_at = 0xdc;
+}
+
+// T2K.C (block t2k_core): the scaler object (0x5f8 bytes, tsi_AllocMem, NOT zero-filled: only the fields below are initialised by 0x1075e960),
+// as the constructor, the transformation, the renderer and the destructor use it. The 2x2 matrix is 16.16, `identity` says it is the unit matrix.
+namespace t2k_object {
+inline constexpr std::uint32_t stamp = 0x0, mem = 0x4, matrix_xx = 0x8, matrix_xy = 0xc, matrix_yx = 0x10, matrix_yy = 0x14, glyph_cache = 0x18,
+    identity = 0x1c, buffer_20 = 0x20, buffer_24 = 0x24, horizontal_metrics_present = 0x28, vertical_metrics_present = 0x64, sfnt = 0x144,
+    end_stamp = 0x5f4, size = 0x5f8;
+// The metrics the transformation derives (ascender, descender, line gap, maximum advance, caret vector, underline position and thickness, each an
+// x and a y word, 16.16): horizontal from +0x2c, vertical from +0x68 (the vertical's ascender and descender are its left and right sides).
+inline constexpr std::uint32_t horizontal_metrics = 0x2c, caret_vector = 0x4c, vertical_metrics = 0x68, vertical_caret_vector = 0x88;
+// The render result: +0x90 a flag (1 after a render), the advance in pixels (+0x94, +0x98) and 16.16 (+0x9c, +0xa0; the vertical's +0xb8, +0xbc), the
+// bearings (+0xa4 top, +0xa8 left; copies +0xc0, +0xc4; +0xb0, +0xb4 the vertical bearings), the glyph being rendered (+0xc8), the character or glyph
+// number the cache keys on (+0xcc, a halfword), the bitmap (+0xd0 width, +0xd4 height, +0xd8 row bytes, +0xdc pointer, +0xe0 a block the renderer owns), the error (+0xe4).
+inline constexpr std::uint32_t rendered = 0x90, advance_x = 0x94, advance_y = 0x98, advance_16_x = 0x9c, advance_16_y = 0xa0, top = 0xa4, left = 0xa8,
+    glyph = 0xc8, glyph_number = 0xcc, bitmap_width = 0xd0, bitmap_height = 0xd4, bitmap_stride = 0xd8, bitmap = 0xdc, bitmap_block = 0xe0, error = 0xe4;
+// The sizes (+0xe8, +0xec pixels), their 16.16 scale (+0xf0, +0xf4, then divided by the units per em: +0xf8, +0xfc), the two ratio records of
+// scale_ratio (+0x100, +0x114), the resolution (+0x128), the hint sizes last used (+0x12c, +0x130), the hinter's byte (+0x134), the hint mode (+0x138: 2 for a
+// font of 1000 glyphs or more), the units per em (+0x140, halfword), the hint handle (+0x148) and the table of -1 words (+0x14c..+0x3a0).
+inline constexpr std::uint32_t size_x = 0xe8, size_y = 0xec, scale_x = 0xf0, scale_y = 0xf4, unit_scale_x = 0xf8, unit_scale_y = 0xfc, ratio_x = 0x100,
+    ratio_y = 0x114, resolution = 0x128, hint_size_x = 0x12c, hint_size_y = 0x130, hint_byte = 0x134, hint_mode = 0x138, units_per_em = 0x140, hint_handle = 0x148,
+    minus_ones = 0x14c;
 }
 }

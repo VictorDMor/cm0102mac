@@ -98,6 +98,14 @@ std::uint64_t synthetic_calls_made();
 // differ.
 std::vector<std::string> compare_routine_call(State& s, std::uint32_t entry, RoutineRunner original, RoutineRunner rewrite,
                                               unsigned results, bool corrupt = false, bool strict_volatile = false);
+// Opt-in (a family sets it; the others keep what they had): compare_routine_call then runs both children even when one ended without a report, still throws the
+// same "Routine check child ended..." error, and leaves in routine_check_ended_sides which side ended (bit 0 the original's child, bit 1 the rewrite's) and in
+// routine_check_ended_status the raw wait status of each (a child killed by the alarm has SIGALRM in the low bits), so a caller can tell a hang on both sides from one on a single side.
+extern bool routine_check_record_ended;
+extern int routine_check_ended_sides;
+extern int routine_check_ended_status[2];
+// And the stop message of a child that did report one (a fault, or the instruction budget running out), per side, empty otherwise.
+extern std::string routine_check_stop_message[2];
 // True in a checker child; families then run nested calls of their own
 // routines without checking them again.
 bool routine_check_child();

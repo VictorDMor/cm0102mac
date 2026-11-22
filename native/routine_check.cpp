@@ -483,11 +483,40 @@ std::vector<SyntheticCall> read_synthetic_calls(const std::filesystem::path& fil
     return calls;
 }
 
+bool routine_check_record_ended = false;
+int routine_check_ended_sides = 0;
+int routine_check_ended_status[2] = {0, 0};
+std::string routine_check_stop_message[2];
 std::vector<std::string> compare_routine_call(State& s, std::uint32_t entry, RoutineRunner original, RoutineRunner rewrite,
                                               unsigned results, bool corrupt, bool strict_volatile) {
     const auto stack = std::uint32_t(s.r<4>(4));
-    const auto expected = fork_run(s, entry, original, false);
-    const auto actual = fork_run(s, entry, rewrite, corrupt);
+    if (!routine_check_record_ended) {
+        const auto expected = fork_run(s, entry, original, false);
+        const auto actual = fork_run(s, entry, rewrite, corrupt);
+        return compare_reports(s, expected, actual, results, stack, strict_volatile);
+    }
+    // The same, but a child that ends without a report does not stop the other from running, and which ended is recorded.
+    routine_check_ended_sides = 0;
+    routine_check_ended_status[0] = routine_check_ended_status[1] = 0;
+    routine_check_stop_message[0].clear();
+    routine_check_stop_message[1].clear();
+    Report expected, actual;
+    std::string failure;
+    const auto run = [&](RoutineRunner runner, bool spoil, Report& into, int side) {
+        try {
+            into = fork_run(s, entry, runner, spoil);
+            if (into.outcome == Outcome::fault) routine_check_stop_message[side] = into.message;
+        } catch (const std::runtime_error& error) {
+            const std::string what = error.what();
+            if (!what.starts_with("Routine check child ended")) throw;
+            routine_check_ended_sides |= 1 << side;
+            if (const auto at = what.rfind("(status "); at != std::string::npos) routine_check_ended_status[side] = std::atoi(what.c_str() + at + 8);
+            if (failure.empty()) failure = what;
+        }
+    };
+    run(original, false, expected, 0);
+    run(rewrite, corrupt, actual, 1);
+    if (routine_check_ended_sides) throw std::runtime_error(failure);
     return compare_reports(s, expected, actual, results, stack, strict_volatile);
 }
 

@@ -167,7 +167,192 @@ std::uint32_t new_sfnt(Cpu& c, std::uint32_t mem, std::uint32_t format, std::uin
                        std::uint32_t error_out);
 void delete_sfnt(Cpu& c, std::uint32_t font, std::uint32_t error_out);
 
+// ---- T2KSC (0x10761270..0x10762f40): the scan converter (font_engine_t2ksc.cpp; scan:: in font_engine_detail.hpp) ------------------------
+// 0x10761270: the next chunk of edge nodes (the first call, with the chunk capacity zero, uses the one inside the object); returns it.
+std::uint32_t new_edge_chunk(Cpu& c, std::uint32_t sc);
+// 0x107614c0: the extents from the edge lists. 0x10761730: the points' extents (indices 0..last of the x and y word arrays).
+void bounds_from_edges(Cpu& c, std::uint32_t sc);
+void point_extents(Cpu& c, std::uint32_t sc, std::uint32_t xs, std::uint32_t ys, std::int32_t last);
+// 0x107617b0 (a stack leaver): a line (26.6) into the column and row lists. 0x10761d50 (a stack leaver): a quadratic curve flattened into lines.
+void add_line(Cpu& c, std::uint32_t sc, std::uint32_t x1, std::uint32_t y1, std::uint32_t x2, std::uint32_t y2);
+void add_curve(Cpu& c, std::uint32_t sc, std::uint32_t x0, std::uint32_t y0, std::uint32_t x1, std::uint32_t y1, std::uint32_t x2, std::uint32_t y2);
+// 0x10761ec0: every contour as lines and curves.
+void add_contours(Cpu& c, std::uint32_t sc);
+// 0x107620d0: the converter for an outline (contour count, start/end index halfwords, x/y words, on-curve bytes, `grey`); four more arguments are on the
+// caller's stack. 0x107623c0: the bitmap (`skip` leaves it unmade). 0x10762e30 (a stack leaver): the converter given back.
+std::uint32_t new_scan_converter(Cpu& c, std::uint32_t mem, std::uint32_t count, std::uint32_t starts, std::uint32_t ends, std::uint32_t xs, std::uint32_t ys,
+                                 std::uint32_t on_curve, std::uint32_t grey);
+void render_bitmap(Cpu& c, std::uint32_t sc, std::uint32_t skip);
+void delete_scan_converter(Cpu& c, std::uint32_t sc);
+
+// ---- FNT, first third (0x107559a0..0x10757fb0): the TrueType interpreter's entry and loops, rounding and projection callbacks, vector, stack and point opcodes ----
+// Everything but `interpret` and the three internal helpers is reached through a pointer: the opcode table (r3 = the execution context, interpreter:: in the detail
+// header) or the context's function words. The arguments are the registers the callers set; every routine leaves r3-r10 as the original does.
+// 0x107559a0 (ENDF outside a definition, and every undefined opcode): longjmp to the context's jump buffer with 0x1101.
+void illegal_opcode(Cpu& c, std::uint32_t context);
+// 0x107559d0, 0x10755a20, 0x10755a60, 0x10755ab0, 0x10755b00, 0x10755b50: the rounding functions (value, compensation): to the double grid (steps of 0x20), down, up,
+// to the grid (steps of 0x40), to the half grid, off. 0x10755b60, 0x10755be0: the super rounds, by the graphic state's period, phase and threshold.
+std::int32_t round_to_double_grid(std::int32_t value, std::int32_t compensation);
+std::int32_t round_down_to_grid(std::int32_t value, std::int32_t compensation);
+std::int32_t round_up_to_grid(std::int32_t value, std::int32_t compensation);
+std::int32_t round_to_grid(std::int32_t value, std::int32_t compensation);
+std::int32_t round_to_half_grid(std::int32_t value, std::int32_t compensation);
+std::int32_t round_off(std::int32_t value);
+void round_super(Cpu& c, std::uint32_t context, std::int32_t value, std::int32_t compensation);
+void round_super_45(Cpu& c, std::uint32_t context, std::int32_t value, std::int32_t compensation);
+// 0x10755cc0, 0x10755e00, 0x10755e30: the move functions (context, zone, point, delta): along the freedom vector, along x, along y.
+void move_general(Cpu& c, std::uint32_t context, std::uint32_t zone_at, std::uint32_t point, std::uint32_t delta);
+void move_x(Cpu& c, std::uint32_t zone_at, std::uint32_t point, std::uint32_t delta);
+void move_y(Cpu& c, std::uint32_t zone_at, std::uint32_t point, std::uint32_t delta);
+// 0x10755e60, 0x10755ec0, 0x10755f20, 0x10755f30: the project functions (context, x, y): along the projection vector, the dual vector, x, y.
+void project_general(Cpu& c, std::uint32_t context, std::uint32_t x, std::uint32_t y);
+void dual_project_general(Cpu& c, std::uint32_t context, std::uint32_t x, std::uint32_t y);
+std::int32_t project_x(std::int32_t x, std::int32_t y);
+std::int32_t project_y(std::int32_t x, std::int32_t y);
+// 0x10755f40, 0x10755f60, 0x10756020, 0x10756030, 0x107560e0: a cvt entry and the single width, plain and scaled by the projection vector's ratio; a cvt entry shifted.
+std::uint32_t read_cvt(Cpu& c, std::uint32_t context, std::uint32_t index);
+void read_cvt_scaled(Cpu& c, std::uint32_t context, std::uint32_t index);
+std::uint32_t single_width(Cpu& c, std::uint32_t context);
+void single_width_scaled(Cpu& c, std::uint32_t context);
+void shift_cvt(Cpu& c, std::uint32_t context, std::uint32_t index, std::uint32_t delta);
+// 0x10756100 (with a trace callback), 0x10756280: run the program between `start` and `end` through the opcode table.
+void run_traced(Cpu& c, std::uint32_t context, std::uint32_t start, std::uint32_t end);
+void run(Cpu& c, std::uint32_t context, std::uint32_t start, std::uint32_t end);
+// 0x10756310: run a program over the zones under a setjmp (called by new_hint_font, set_hint_size and load_glyph_program): 0, or the error code (0x1101, 0x1102).
+std::uint32_t interpret(Cpu& c, std::uint32_t zones, std::uint32_t start, std::uint32_t end, std::uint32_t state, std::uint32_t trace);
+// The opcodes (r3 = the context): 0x10756520 SVTCA y, 0x10756560 SVTCA x, 0x107565a0 SPVTCA, 0x10756630 SFVTCA, 0x107566b0 SPVTL, 0x10756820 SDPVTL, 0x10756a00 SFVTL,
+// 0x10756b60 SPVFS, 0x10756c00 SFVFS, 0x10756c90 GPV, 0x10756cc0 GFV, 0x10756cf0 SFVTPV, 0x10756d20 ISECT, 0x10756fc0 SMD, 0x10756fe0 SCVTCI, 0x10757000 SSWCI,
+// 0x10757020 SSW, 0x10757080 SRP0/1/2, SLOOP, POP, 0x107570e0 SZP0/1/2/S, 0x10757150 SROUND, 0x107571a0 S45ROUND, 0x107571f0 RTG, RTHG, RTDG, RDTG, RUTG, ROFF,
+// 0x10757420 the advance width pushed, 0x10757470 DUP, 0x10757490 CLEAR, 0x107574a0 SWAP, 0x107574c0 DEPTH, 0x107574f0 CINDEX, 0x10757510 MINDEX, 0x10757560 ROLL,
+// 0x10757580 MDAP, 0x10757650 MIAP, 0x10757790 IUP, 0x10757bd0 SHP, 0x10757ca0 SHC, 0x10757dc0 SHZ.
+void svtca_y(Cpu& c, std::uint32_t context);
+void svtca_x(Cpu& c, std::uint32_t context);
+void spvtca(Cpu& c, std::uint32_t context);
+void sfvtca(Cpu& c, std::uint32_t context);
+void spvtl(Cpu& c, std::uint32_t context);
+void sdpvtl(Cpu& c, std::uint32_t context);
+void sfvtl(Cpu& c, std::uint32_t context);
+void spvfs(Cpu& c, std::uint32_t context);
+void sfvfs(Cpu& c, std::uint32_t context);
+void gpv(Cpu& c, std::uint32_t context);
+void gfv(Cpu& c, std::uint32_t context);
+void sfvtpv(Cpu& c, std::uint32_t context);
+void isect(Cpu& c, std::uint32_t context);
+void smd(Cpu& c, std::uint32_t context);
+void scvtci(Cpu& c, std::uint32_t context);
+void sswci(Cpu& c, std::uint32_t context);
+void ssw(Cpu& c, std::uint32_t context);
+void set_reference_point(Cpu& c, std::uint32_t context);
+void set_zone_pointer(Cpu& c, std::uint32_t context);
+void sround(Cpu& c, std::uint32_t context);
+void sround_45(Cpu& c, std::uint32_t context);
+void set_round_function(Cpu& c, std::uint32_t context);
+void advance_width(Cpu& c, std::uint32_t context);
+void dup(Cpu& c, std::uint32_t context);
+void clear_stack(Cpu& c, std::uint32_t context);
+void swap_top(Cpu& c, std::uint32_t context);
+void stack_depth(Cpu& c, std::uint32_t context);
+void copy_index(Cpu& c, std::uint32_t context);
+void move_index(Cpu& c, std::uint32_t context);
+void roll(Cpu& c, std::uint32_t context);
+void mdap(Cpu& c, std::uint32_t context);
+void miap(Cpu& c, std::uint32_t context);
+void iup(Cpu& c, std::uint32_t context);
+void shp(Cpu& c, std::uint32_t context);
+void shc(Cpu& c, std::uint32_t context);
+void shz(Cpu& c, std::uint32_t context);
+// 0x10757290: the round state (period, mask, phase, threshold) from the SROUND/S45ROUND operand; 0x10757ab0: the displacement the shift opcodes apply, to the
+// three frame slots the caller reads back, the reference zone returned.
+void set_round_state(Cpu& c, std::uint32_t context, std::uint32_t value, std::uint32_t flag);
+std::uint32_t reference_shift(Cpu& c, std::uint32_t context, std::uint32_t dx_at, std::uint32_t dy_at, std::uint32_t reference_at);
+
 // ---- T2KEXTRA (0x10761070): the colour table rendering for command bit 0x80, which the game never sets ----------------------------
 // The 8-bit bitmap of a rendered glyph (the T2K object) widened by four with a five-tap filter; the old bitmap released (leaves nothing in r3-r10).
 void render_color_table(Cpu& c, std::uint32_t t2k);
+// ---- FNT, last third (0x10759250..0x1075ac40; block fnt_c): the interpreter's flow control, definitions, the jump-table dispatchers, MDRP, MIRP, the deltas ----
+// Every handler takes the execution context (`interpreter` in font_engine_detail.hpp) and is called by the interpreter's loop through the indirect glue;
+// each leaves r3-r10 as the original does. The definitions and the table builders write the interpreter's state.
+// 0x10759520: the instruction pointer past the current opcode's operands (leaves r4 = the opcode, r5 = the pointer); 0x10759840: the single width cut-in.
+void skip_operands(Cpu& c, std::uint32_t ctx);
+std::uint32_t single_width_cut_in(Cpu& c, std::uint32_t ctx, std::uint32_t distance);
+// 0x10759250 (LT LTEQ GT GTEQ EQ NEQ AND OR ADD SUB DIV MUL MAX MIN), 0x10759430 (ODD EVEN NOT ABS NEG FLOOR CEILING).
+void stack_arithmetic(Cpu& c, std::uint32_t ctx);
+void stack_unary(Cpu& c, std::uint32_t ctx);
+// 0x107595a0 IF, 0x10759660 ELSE, 0x10759700 JMPR, 0x10759730 JROT, 0x10759770 JROF (opcode_jump_if with the condition's sense), 0x107597b0 ROUND, 0x10759810 NROUND.
+void opcode_if(Cpu& c, std::uint32_t ctx);
+void opcode_else(Cpu& c, std::uint32_t ctx);
+void opcode_jump(Cpu& c, std::uint32_t ctx);
+void opcode_jump_if(Cpu& c, std::uint32_t ctx, bool when_true);
+void opcode_round(Cpu& c, std::uint32_t ctx);
+void opcode_no_round(Cpu& c, std::uint32_t ctx);
+// 0x107598e0 MDRP, 0x10759ae0 MIRP.
+void opcode_mdrp(Cpu& c, std::uint32_t ctx);
+void opcode_mirp(Cpu& c, std::uint32_t ctx);
+// 0x10759dc0 CALL, 0x10759e30 FDEF, 0x10759ef0 LOOPCALL, 0x10759fa0 (an opcode with no table entry: its IDEF or the error 0x1101), 0x1075a040 IDEF.
+void opcode_call(Cpu& c, std::uint32_t ctx);
+void opcode_function_def(Cpu& c, std::uint32_t ctx);
+void opcode_loop_call(Cpu& c, std::uint32_t ctx);
+void opcode_undefined(Cpu& c, std::uint32_t ctx);
+void opcode_instruction_def(Cpu& c, std::uint32_t ctx);
+// 0x1075a150 UTP, 0x1075a1a0 SDB and 0x1075a1c0 SDS (`field` = graphic_state::delta_base / delta_shift).
+void opcode_untouch(Cpu& c, std::uint32_t ctx);
+void opcode_set_delta(Cpu& c, std::uint32_t ctx, std::uint32_t field);
+// 0x1075a1e0 and its six entries (DELTAP1..3 at 0x1075a3a0, 0x1075a3d0, 0x1075a410; DELTAC1..3 at 0x1075a450, 0x1075a480, 0x1075a4c0: `entry`, the function
+// called per match, the base added to the state's delta base and the return address of the wrapper's call).
+void delta_opcode(Cpu& c, std::uint32_t ctx, std::uint32_t function, std::uint32_t base, std::uint32_t shift);
+void opcode_delta(Cpu& c, std::uint32_t ctx, std::uint32_t entry, std::uint32_t function, std::uint32_t range_base, std::uint32_t back);
+// 0x1075a500: the 256 descriptors of the opcode table at `table`; 0x1075a970: that table in the state's scratch block and the vector and angle tables after it.
+void install_opcode_table(Cpu& c, std::uint32_t table);
+void build_interpreter_tables(Cpu& c, std::uint32_t state);
+
+// ---- T2K.C (0x1075e960..0x10761070): the scaler object (t2k_object in font_engine_detail.hpp) the game keeps per font (block t2k_core) ----
+// The API entries are new_t2k, set_transformation, purge, render_character and delete_t2k; the others are their workers. Each of the API
+// entries runs setjmp on the memory object's jump buffer and stores the error code through the caller's pointer (0 on success).
+// 0x1075e960 NewT2K(mem, sfnt, error): the object over an sfnt, null with the code in *error on failure.
+std::uint32_t new_t2k(Cpu& c, std::uint32_t mem, std::uint32_t font, std::uint32_t error_out);
+// 0x1075eb10: the hinter for the object's current size (dormant for the game).
+void prepare_hinting(Cpu& c, std::uint32_t t);
+// 0x1075ece0: `count` halfwords scaled to words by a scale_ratio record (kind 0 shift, 1 divide, 2 16.16 multiply).
+void scale_coordinates(Cpu& c, std::uint32_t source, std::uint32_t destination, std::int32_t count, std::uint32_t ratio);
+// 0x1075eef0 T2K_NewTransformation(t2k, hint, size_x, size_y, matrix, ?, error): the size, the unit-column matrix and the metrics they give.
+void set_transformation(Cpu& c, std::uint32_t t, std::uint32_t hint, std::uint32_t size_x, std::uint32_t size_y, std::uint32_t matrix, std::uint32_t extra_word,
+                        std::uint32_t error_out);
+// 0x1075f870: what a rendering leaves in the object, by level (0 the glyph, 1 and up the bitmap, 100 the grown scratch buffer, 2 the hinter); 0x1075f980: the purge API.
+void release_glyph(Cpu& c, std::uint32_t t, std::int32_t level);
+void purge(Cpu& c, std::uint32_t t, std::uint32_t level, std::uint32_t error_out);
+// 0x1075fa10: one glyph (or a composite's component, recursively) into the object; 0x10760e30 (the game's renderer) wraps it; 0x10760f50 deletes the object.
+void render_glyph(Cpu& c, std::uint32_t t, std::uint32_t index, std::uint32_t depth, std::uint32_t shift_x, std::uint32_t shift_y, std::uint32_t quality,
+                  std::uint32_t cmd);
+void render_character(Cpu& c, std::uint32_t t, std::uint32_t index, std::uint32_t shift_x, std::uint32_t shift_y, std::uint32_t quality, std::uint32_t cmd,
+                      std::uint32_t error_out);
+void delete_t2k(Cpu& c, std::uint32_t t, std::uint32_t error_out);
+// ---- FNT, second third (0x10757fb0..0x10759250; block fnt_b): the graphic-state and point-movement opcodes (reached by pointer only; r3 = the context) ----
+void opcode_shift_pixels(Cpu& c, std::uint32_t ctx);          // 0x10757fb0 SHPIX
+void opcode_interpolate(Cpu& c, std::uint32_t ctx);           // 0x107580d0 IP
+void opcode_move_indirect(Cpu& c, std::uint32_t ctx);         // 0x10758270 MSIRP
+void opcode_align_to_rp(Cpu& c, std::uint32_t ctx);           // 0x107583b0 ALIGNRP
+void opcode_align_points(Cpu& c, std::uint32_t ctx);          // 0x10758480 ALIGNPTS
+void opcode_angle_weight(Cpu& c, std::uint32_t ctx);          // 0x10758550 SANGW
+void opcode_flip_points(Cpu& c, std::uint32_t ctx);           // 0x10758570 FLIPPT
+void opcode_flip_range_on(Cpu& c, std::uint32_t ctx);         // 0x107585c0 FLIPRGON
+void opcode_flip_range_off(Cpu& c, std::uint32_t ctx);        // 0x10758610 FLIPRGOFF
+void opcode_scan_control(Cpu& c, std::uint32_t ctx);          // 0x10758670 SCANCTRL
+void opcode_scan_type(Cpu& c, std::uint32_t ctx);             // 0x107586a0 SCANTYPE
+void opcode_instruction_control(Cpu& c, std::uint32_t ctx);   // 0x10758710 INSTCTRL
+void opcode_adjust_angle(Cpu& c, std::uint32_t ctx);          // 0x10758790 (0x7f)
+void push_stream(Cpu& c, std::uint32_t ctx, std::uint32_t count, std::uint32_t bytes);  // 0x10758ae0: the push loop of the four below
+void opcode_push_bytes(Cpu& c, std::uint32_t ctx, std::uint32_t entry, std::uint32_t back, std::uint32_t kind);  // 0x10758b60 PUSHB[n] (1), NPUSHB 0x10758b90 (3), PUSHW[n] 0x10758bd0 (0), NPUSHW 0x10758c00 (2)
+void opcode_write_storage(Cpu& c, std::uint32_t ctx);         // 0x10758c40 WS
+void opcode_read_storage(Cpu& c, std::uint32_t ctx);          // 0x10758c80 RS
+void opcode_write_cvt_pixels(Cpu& c, std::uint32_t ctx);      // 0x10758cc0 WCVTP
+void opcode_write_cvt_font_units(Cpu& c, std::uint32_t ctx);  // 0x10758d70 WCVTF
+void opcode_read_cvt(Cpu& c, std::uint32_t ctx);              // 0x10758de0 RCVT
+void opcode_get_coordinate(Cpu& c, std::uint32_t ctx);        // 0x10758e40 GC
+void opcode_set_coordinate(Cpu& c, std::uint32_t ctx);        // 0x10758ee0 SCFS
+void opcode_measure_distance(Cpu& c, std::uint32_t ctx);      // 0x10758fa0 MD
+void opcode_measure_ppem(Cpu& c, std::uint32_t ctx);          // 0x107590b0 MPPEM
+void opcode_measure_point_size(Cpu& c, std::uint32_t ctx);    // 0x10759190 MPS
+void opcode_get_info(Cpu& c, std::uint32_t ctx);              // 0x107591b0 GETINFO
+void opcode_set_auto_flip(Cpu& c, std::uint32_t ctx, std::uint32_t on);  // 0x10759220 FLIPON, 0x10759230 FLIPOFF
+void opcode_debug(Cpu& c, std::uint32_t ctx);                 // 0x10759240 DEBUG
 }

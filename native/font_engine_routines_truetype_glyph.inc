@@ -1,5 +1,5 @@
 // The font engine, block `truetype_glyph` (font_engine_truetype_glyph.cpp): the sfnt, its creation and deletion, the cmap lookups, the glyph
-// by index. 0x10766dc0 and 0x107670e0 are listed in font_engine_volatile_free.inc.
+// by index. 0x107670e0 is listed in font_engine_volatile_free.inc; 0x10766dc0 is compared on r9/r10 (font_engine_volatile_read.inc).
 FONT_ENGINE_ROUTINE(0x10765810, 0x1076642c, NONE, "136cee12a92277a8", [](Cpu& c) { font_engine::read_sfnt(c, c.r(3), c.r(4), c.r(5)); })
 FONT_ENGINE_ROUTINE(0x10766430, 0x1076649c, R3, "837354610a39de48", [](Cpu& c) { c.set(3, font_engine::glyph_limit(c, c.r(3))); })
 FONT_ENGINE_ROUTINE(0x107664a0, 0x10766768, R3, "ee441d8ec63ecf4b", [](Cpu& c) { c.set(3, font_engine::load_glyph(c, c.r(3), c.r(4), c.r(5), c.r(6), c.r(7))); })

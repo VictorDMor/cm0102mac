@@ -203,7 +203,7 @@ FONT_ENGINE_CASES("truetype_glyph") {
             }
     }
     // ---- the caret slopes (a leaf over two records) --------------------------------------------------------------------------------
-    for (const auto& font : fonts) cases.push_back({.entry = caret_slopes, .registers = {{3, font.sfnt}, {4, caret_h}, {5, caret_v}, toc}, .label = "caret real font " + hex(font.sfnt)});
+    for (const auto& font : fonts) cases.push_back({.entry = caret_slopes, .registers = {{3, font.sfnt}, {4, caret_h}, {5, caret_v}, {9, 0x5555}, {10, 0x6666}, toc}, .label = "caret real font " + hex(font.sfnt)});
     if (!fonts.empty()) {
         const auto& font = fonts.front();
         const std::int32_t slopes[] = {0, 1, -1, 3, 0x7fff, -0x8000, 0x100, 0x4000, -0x4000, 0x8000 - 1, 0x2000, 7, -9};
@@ -219,7 +219,7 @@ FONT_ENGINE_CASES("truetype_glyph") {
                     memory.push_back(w16(record + 0x18, std::uint32_t(run)));
                     memory.push_back(w16(record + 0x16, std::uint32_t(rise)));
                 }
-                cases.push_back({.entry = caret_slopes, .registers = {{3, sfnt_at}, {4, caret_h}, {5, caret_v}, toc}, .memory = memory,
+                cases.push_back({.entry = caret_slopes, .registers = {{3, sfnt_at}, {4, caret_h}, {5, caret_v}, {9, 0x5555}, {10, 0x6666}, toc}, .memory = memory,
                                  .label = "caret run " + hex(std::uint32_t(run)) + " rise " + hex(std::uint32_t(rise))});
             }
         for (const auto [horizontal, vertical] : {std::pair{false, false}, {true, false}, {false, true}}) {
@@ -229,7 +229,7 @@ FONT_ENGINE_CASES("truetype_glyph") {
             memory.push_back(w32(sfnt_at + 0x1c, vertical ? fake_vhea : 0));
             put_bytes(memory, fake_hhea, random_bytes(random, 0x28));
             put_bytes(memory, fake_vhea, random_bytes(random, 0x28));
-            cases.push_back({.entry = caret_slopes, .registers = {{3, sfnt_at}, {4, caret_h}, {5, caret_v}, toc}, .memory = memory,
+            cases.push_back({.entry = caret_slopes, .registers = {{3, sfnt_at}, {4, caret_h}, {5, caret_v}, {9, 0x5555}, {10, 0x6666}, toc}, .memory = memory,
                              .label = std::string("caret tables ") + (horizontal ? "hhea" : "-") + (vertical ? " vhea" : " -")});
         }
     }

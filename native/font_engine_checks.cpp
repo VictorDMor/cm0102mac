@@ -36,6 +36,7 @@
 #include <set>
 #include <sstream>
 #include <string_view>
+#include <csignal>
 #include <tuple>
 
 #if defined(CM_FONT_ENGINE_COVERAGE)
@@ -195,15 +196,35 @@ void install_leaver_check(State& s) {
 }
 }
 namespace {
+// Seconds a compared run may take (a mutated input can keep a loop going for a long time on both sides: the runs of a mutation are given less).
+unsigned run_alarm = 60;
+const std::function<void(State&)>* case_prepare = nullptr;
+// The mutation of a prepared case (Case::prepare) changes values the checked call reads from the state the preparation builds, so it is applied in
+// each run after the preparation: (address, size, value).
+std::vector<std::tuple<std::uint32_t, unsigned, std::uint64_t>> pending_mutations;
+void prepare_case(State& s) {
+    if (!case_prepare || !*case_prepare) return;
+    alarm(run_alarm);
+    s.budget = s.executed + 4'000'000'000ULL;
+    (*case_prepare)(s);
+    for (const auto& [address, size, value] : pending_mutations) {
+        if (size == 1) s.memory.write<1>(address, value & 0xff);
+        else if (size == 2) s.memory.write<2>(address, value & 0xffff);
+        else if (size == 4) s.memory.write<4>(address, std::uint32_t(value));
+        else s.memory.write<8>(address, value);
+    }
+}
 void bounded_original(State& s, std::uint32_t entry) {
+    prepare_case(s);
     font_engine_checks::install_leaver_check(s);
-    alarm(60); s.budget = s.executed + 4'000'000'000ULL; font_engine_run_original(s, entry);
+    alarm(run_alarm); s.budget = s.executed + 4'000'000'000ULL; font_engine_run_original(s, entry);
     verify_run(s, "original");
     save_volatile(s, entry);
 }
 void bounded_rewrite(State& s, std::uint32_t entry) {
+    prepare_case(s);
     font_engine_checks::install_leaver_check(s);
-    alarm(60);
+    alarm(run_alarm);
     s.budget = s.executed + 4'000'000'000ULL;
     font_engine_run_rewrite(s, entry);
     verify_run(s, "rewrite");
@@ -216,14 +237,18 @@ void bounded_rewrite(State& s, std::uint32_t entry) {
     }
 }
 
-struct Read { std::uint32_t address; unsigned size; };
+// `value`: what the call first read there (big-endian bytes as the guest holds them), taken in the run that prepared the state.
+struct Read { std::uint32_t address; unsigned size; std::uint64_t value; };
 struct ReadTrace final : MemoryObserver {
-    std::set<std::pair<std::uint32_t, unsigned>> seen;
+    std::map<std::pair<std::uint32_t, unsigned>, std::uint64_t> seen;
     void mapped(std::uint32_t, std::uint64_t) override {}
     void written(std::uint32_t, const std::uint8_t*, std::size_t) override {}
     void cleared(std::uint32_t, std::uint64_t) override {}
-    void read(std::uint32_t address, const std::uint8_t*, unsigned size) override {
-        if (seen.size() < 200000) seen.emplace(address, size);
+    void read(std::uint32_t address, const std::uint8_t* bytes, unsigned size) override {
+        if (seen.size() >= 200000 || size > 8) return;
+        std::uint64_t value = 0;
+        for (unsigned n = 0; n < size; ++n) value = value << 8 | bytes[n];
+        seen.emplace(std::make_pair(address, size), value);
     }
 };
 
@@ -245,13 +270,14 @@ std::vector<Read> reads_of(State& s, std::uint32_t entry) {
         ReadTrace trace;
         auto silent = routed_like_compared_runs();
         routine_checker = &silent;
+        prepare_case(s);
         const auto previous = s.memory.date_observer;
         s.memory.date_observer = &trace;
         alarm(30);
         try { s.budget = s.executed + 4'000'000'000ULL; font_engine_run_original(s, entry); } catch (...) {}
         s.memory.date_observer = previous;
-        for (const auto& [address, size] : trace.seen) {
-            const Read read{address, size};
+        for (const auto& [key, value] : trace.seen) {
+            const Read read{key.first, key.second, value};
             if (::write(fds[1], &read, sizeof read) != ssize_t(sizeof read)) _exit(2);
         }
         ::close(fds[1]);
@@ -344,18 +370,52 @@ void store(State& s, const Write& write, std::uint32_t value) {
     else s.memory.write<4>(write.address, value);
 }
 struct Comparison { bool returned = false, faulted = false, timed_out = false; std::vector<std::string> differences; };
+// Runs that ended without a report: on both sides, on one side only, and the original's alone by the alarm that compared after a longer one.
+unsigned ended_alike = 0, ended_alone = 0, slow_original = 0;
 Comparison compare_call(State& s, std::uint32_t entry, unsigned results, bool strict = false) {
     Comparison outcome;
     const auto stop_rewrite = "the rewrite stopped: ", stop_original = "the original stopped: ";
     std::vector<std::string> found;
+    routine_check_record_ended = true;
     routine_check_native_contract = font_engine_native(entry);
     routine_check_dead_stack_free = font_engine_dead_stack_free(entry);
     routine_check_dead_stack_exact = !routine_check_dead_stack_free;
     try {
         found = compare_routine_call(s, entry, bounded_original, bounded_rewrite, results, false, strict);
     } catch (const std::runtime_error& error) {
-        if (std::string_view(error.what()).starts_with("Routine check child ended")) { outcome.timed_out = true; return outcome; }
-        throw;
+        if (!std::string_view(error.what()).starts_with("Routine check child ended")) throw;
+        // A run both sides could not finish (the alarm, a loop that a mutated input keeps going) is a timeout, alike. A child that ended on one side only is
+        // not: a crash or hang of the rewrite alone, or of the original alone other than by the alarm, is a difference. The original ending alone by the alarm
+        // is what a faster native rewrite does to a loop the original runs slowly: the call is repeated once with a longer alarm, and compared if both finish.
+        const auto sides = routine_check_ended_sides;
+        const auto alarmed = [](int status) { return (status & 0x7f) == SIGALRM; };
+        const char* const who = sides == 1 ? "the original" : sides == 2 ? "the rewrite" : "both";
+        if (sides == 3) {
+            ++ended_alike;
+            std::cerr << "timed out alike [" << current_label << "]\n";
+            outcome.timed_out = true;
+            return outcome;
+        }
+        // The instruction budget counts generated instructions only, so a loop a mutated input keeps going runs the original out of its budget at once while the
+        // native rewrite, which is not charged, goes on until the alarm: both loop, alike.
+        // Only in a mutated run (`mutating`): an unmutated case whose rewrite hangs while the original runs out of its budget is a finding (the rewrite hung alone).
+        if (mutating && sides == 2 && alarmed(routine_check_ended_status[1]) && std::string_view(routine_check_stop_message[0]).starts_with("Native instruction budget exhausted")) {
+            ++ended_alike;
+            std::cerr << "timed out alike (mutated run: the original out of its budget, the rewrite at the alarm) [" << current_label << "]\n";
+            outcome.timed_out = true;
+            return outcome;
+        }
+        if (sides == 1 && alarmed(routine_check_ended_status[0]) && run_alarm < 150) {
+            const auto before = run_alarm;
+            run_alarm = 150;
+            const auto again = compare_call(s, entry, results, strict);
+            run_alarm = before;
+            if (again.differences.empty()) { ++slow_original; std::cerr << "original slower than the rewrite [" << current_label << "]: repeated, compared\n"; }
+            return again;
+        }
+        ++ended_alone;
+        outcome.differences = {std::string("only ") + who + " ended without a report (status " + std::to_string(routine_check_ended_status[sides == 1 ? 0 : 1]) + ")"};
+        return outcome;
     }
     std::string rewrite_stop, original_stop;
     for (const auto& line : found) {
@@ -486,6 +546,12 @@ std::uint64_t traced_pairs = 0;
 void compare_traces(State& s, std::uint32_t entry) {
     const auto original = trace_run(s, entry, bounded_original);
     auto rewrite = trace_run(s, entry, bounded_rewrite);
+    if (std::getenv("CM_FONT_ENGINE_TRACE_DUMP"))
+        for (const std::vector<TracedCall>* side : {static_cast<const std::vector<TracedCall>*>(&original), static_cast<const std::vector<TracedCall>*>(&rewrite)}) {
+            std::cerr << (side == static_cast<const std::vector<TracedCall>*>(&original) ? "TRACE original" : "TRACE rewrite") << " [" << current_label << "] " << side->size() << " calls:";
+            for (const auto& call : *side) std::cerr << ' ' << hex_address(call.back) << (call.after_bl ? ">" : "!") << hex_address(call.target);
+            std::cerr << '\n';
+        }
     using Site = std::pair<std::uint32_t, std::uint32_t>;
     std::map<Site, std::size_t> original_calls;
     for (const auto& call : original) ++original_calls[{call.back, call.target}];
@@ -538,6 +604,9 @@ void compare_traces(State& s, std::uint32_t entry) {
             if (!calls.front()->after_bl && !accepted_finding(site.first, site.second, wrong_return))
                 record(site, wrong_return, 0, calls.size());
         } else if (seen->second != calls.size()) {
+            // A re-entry into the module's own generated code (a return the dispatcher resumes: no `bl` before it) happens only where generated code ran, so its count
+            // differs by side wherever one side's checked call is C++ and a case's preparation ran generated code on both.
+            if (!calls.front()->after_bl && site.first == site.second && site.second >= module_start && site.second < module_end) continue;
             record(site, wrong_count, seen->second, calls.size());
         }
     }
@@ -552,7 +621,8 @@ void compare_traces(State& s, std::uint32_t entry) {
         while (at < calls.size() && !shown(Site{calls[at].back, calls[at].target})) ++at;
         return at < calls.size();
     };
-    const auto both = [&](Site site) { return sites.count(site) != 0 && original_calls.count(site) != 0; };
+    // (The dispatcher's resumptions of the module's own generated code, where the target is the return address, are left out of the order as of the counts.)
+    const auto both = [&](Site site) { return site.first != site.second && sites.count(site) != 0 && original_calls.count(site) != 0; };
     // A truncated trace's order past the shared calls is unknown too (a native routine's direct calls are not
     // traced, so the two prefixes cover different stretches of the run).
     for (std::size_t a = 0, b = 0; !truncated && next_shown(original, a, both) && next_shown(rewrite, b, both); ++a, ++b)
@@ -623,14 +693,15 @@ void report_difference(std::uint32_t entry, std::string_view kind, const std::ve
 // Repeats the call now due with changed inputs; undoes them afterwards.
 void mutate_call(State& s, std::uint32_t entry, unsigned results, std::mt19937& random) {
     if (!options.mutate) return;
-    struct Guard { Guard() { mutating = true; } ~Guard() { mutating = false; } } guard;
+    struct Guard { Guard() { mutating = true; run_alarm = 8; } ~Guard() { mutating = false; run_alarm = 60; } } guard;
+    const bool prepared = case_prepare && *case_prepare;
     auto reads = reads_of(s, entry);
     std::vector<Read> candidates;
     for (const auto& read : reads) {
         if (read.address < 0x108b3a90 || !mapped(s, read.address)) continue;  // immutable code-segment constants
         if (read.size != 1 && read.size != 2 && read.size != 4 && read.size != 8) continue;
         if (read.size == 4) {
-            const auto value = std::uint32_t(s.memory.read<4>(read.address));
+            const auto value = prepared ? std::uint32_t(read.value) : std::uint32_t(s.memory.read<4>(read.address));
             if (value >= 0x10000000 && mapped(s, value)) continue;  // a pointer: invalid ones prove nothing
         }
         candidates.push_back(read);
@@ -652,14 +723,17 @@ void mutate_call(State& s, std::uint32_t entry, unsigned results, std::mt19937& 
                 switch (read.size) { case 1: s.memory.write<1>(read.address, value & 0xff); break; case 2: s.memory.write<2>(read.address, value & 0xffff); break;
                                      case 4: s.memory.write<4>(read.address, std::uint32_t(value)); break; default: s.memory.write<8>(read.address, value); }
             };
-            const auto before = load();
+            const std::uint64_t before = prepared ? read.value : load();
             undo.emplace_back(read, before);
             const auto value = replacement(read, before, random);
-            store(value);
+            if (prepared) pending_mutations.emplace_back(read.address, read.size, value);
+            else store(value);
             detail << hex_address(read.address) << ":" << read.size << "=" << std::hex << value << std::dec << " ";
         }
         const auto outcome = compare_call(s, entry, results, options.strict);
+        pending_mutations.clear();
         for (auto item = undo.rbegin(); item != undo.rend(); ++item) {
+            if (prepared) break;
             const auto& [read, value] = *item;
             switch (read.size) { case 1: s.memory.write<1>(read.address, value & 0xff); break; case 2: s.memory.write<2>(read.address, value & 0xffff); break;
                                  case 4: s.memory.write<4>(read.address, std::uint32_t(value)); break; default: s.memory.write<8>(read.address, value); }
@@ -810,6 +884,7 @@ void run_cases(State& s, std::mt19937& random) {
         case_captures = &item.captures;
         case_nth_answers = &item.nth_answers;
         case_verify = &item.verify;
+        case_prepare = &item.prepare;
         const auto outcome = compare_call(s, item.entry, results_of(item.entry), options.strict);
         auto& tally = case_tally[item.entry];
         ++tally.calls; tally.returned += outcome.returned; tally.faulted += outcome.faulted; tally.timed_out += outcome.timed_out;
@@ -829,6 +904,7 @@ void run_cases(State& s, std::mt19937& random) {
         case_captures = nullptr;
         case_nth_answers = nullptr;
         case_verify = nullptr;
+        case_prepare = nullptr;
     }
     s.registers = saved;
 }
@@ -845,7 +921,7 @@ bool summary(const RoutineChecker* checker) {
     listed = reached.size();
     std::cout << "live_comparisons=" << live << " case_returned=" << cases << " case_faults=" << case_faults
               << " mutated_returned=" << returned << " mutated_faults=" << faulted << " mutated_timeouts=" << timed
-              << " entries_compared=" << listed << '\n';
+              << " entries_compared=" << listed << " ended_alike=" << ended_alike << " ended_one_sided=" << ended_alone << " original_slower=" << slow_original << '\n';
     if (const char* file = std::getenv("CM_FONT_ENGINE_REPORT")) {
         std::ofstream out(file);
         if (checker) for (const auto& [entry, totals] : checker->totals()) if (font_engine_lists(entry))

@@ -11,3 +11,8 @@
 #include "font_engine_routines_style.inc"
 #include "font_engine_routines_truetype_glyph.inc"
 #include "font_engine_routines_t2kextra.inc"
+#include "font_engine_routines_fnt_c.inc"
+#include "font_engine_routines_t2ksc.inc"
+#include "font_engine_routines_fnt_a.inc"
+#include "font_engine_routines_t2k_core.inc"
+#include "font_engine_routines_fnt_b.inc"

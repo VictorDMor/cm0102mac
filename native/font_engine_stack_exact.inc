@@ -23,3 +23,11 @@
 0x10766430, 0x10766cc0, 0x10766d30, 0x107670e0, 0x10767190, 0x10767430,
 // util (the pilot): the five leaf helpers (0x10767f20, the distance, has a frame the rewrite does not build: the leaver check covers it) are frameless that write nothing on the stack, so their dead stack matches; listed so that the entries that call them can be.
 0x10767ce0, 0x10767d40, 0x10767dc0, 0x10767e40, 0x10767eb0,
+// t2ksc: every routine builds the original's frame (the leaves 0x107614c0 and 0x10761730 have none and write nothing on the stack) and holds the original's registers at its
+// calls into the allocator, the leavers and the reporter; the leavers 0x107617b0, 0x10761d50 and 0x10762e30 are observed by the leaver check as well.
+0x10761270, 0x107614c0, 0x10761730, 0x107617b0, 0x10761d50, 0x10761ec0, 0x107620d0, 0x107623c0, 0x10762e30,
+// fnt_a: every routine that builds the original's frame and whose callees are the fixed-point leaves (frameless) or generated (the glue, setjmp, longjmp):
+// the handlers that call through the glue, the helper and the three shifts, IUP (its stack locals).
+// Not listed: SPVTL, SFVTL and SDPVTL, which call the distance (0x10767f20 builds a frame the rewrite does not), and the interpreter entry and its two loops, which run
+// every handler (those included): their frames are built as the original's, and the checks below them compare the leavers' record only.
+0x107559a0, 0x10755be0, 0x10755cc0, 0x10755e60, 0x10755ec0, 0x10755f60, 0x10756030, 0x10756d20, 0x10757020, 0x10757150, 0x107571a0, 0x10757580, 0x10757650, 0x10757790, 0x10757ab0, 0x10757bd0, 0x10757ca0, 0x10757dc0,
