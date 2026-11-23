@@ -21,6 +21,8 @@ inline constexpr std::int32_t tsimem_pool = -0x3c18;   // TSIMEM.C's pool: its a
 inline constexpr std::int32_t t2kextra_pool = -0x3c38; // T2KEXTRA.C's pool: the assertion text at +0x80, the file name at +8
 inline constexpr std::int32_t t2ksc_pool = -0x3c34;    // T2KSC.C's pool: the assertion texts (+0, +0x1e, +0x24), the file name at +0x16
 inline constexpr std::int32_t t2k_pool = -0x3c3c;      // T2K.C's pool: the assertion texts (+0, +0x16, +0x33, +0x68), the file name at +0x10
+inline constexpr std::int32_t autogrid_pool = -0x3e08; // AUTOGRID.C's pool: the assertion texts (+0, +0x16, +0x22, +0x37, +0x41, +0x5b, ...), the file name at +0xb
+inline constexpr std::int32_t ghints_pool = -0x3c48;   // GHINTS.C's pool: the letter lists the heights are measured from, the assertion texts (+0, +0x63, +0x6c, +0x8b), the file name at +0xd
 }
 // The assertion reporter 0x107755c0 (MAIN.CPP) takes the assertion's text, the unit's file name and the line.
 inline constexpr std::uint32_t assertion_report = 0x107755c0;
@@ -308,5 +310,55 @@ inline constexpr std::uint32_t rendered = 0x90, advance_x = 0x94, advance_y = 0x
 inline constexpr std::uint32_t size_x = 0xe8, size_y = 0xec, scale_x = 0xf0, scale_y = 0xf4, unit_scale_x = 0xf8, unit_scale_y = 0xfc, ratio_x = 0x100,
     ratio_y = 0x114, resolution = 0x128, hint_size_x = 0x12c, hint_size_y = 0x130, hint_byte = 0x134, hint_mode = 0x138, units_per_em = 0x140, hint_handle = 0x148,
     minus_ones = 0x14c;
+}
+
+// AUTOGRID.C (blocks autogrid_a: the height and stem analysis; autogrid_b: the callbacks, the hint execution and the handle): the autogridder's
+// object (0x45c bytes from tsi_AllocMem; the hint handle at the T2K object +0x148). It points at the glyph's arrays (the contours, the points as
+// halfwords, an on-curve byte per point; 4 phantom points follow the outline's) and owns per-point tables (capacity + 4 entries), the heights of
+// the font scaled to the size and the stem widths. "?" marks a name inferred from the readers.
+namespace autogrid {
+inline constexpr std::uint32_t stamp = 0x00 /* 0xa5a0f5a5 */, contour_count = 0x04 /* hw */, contour_starts = 0x08, contour_ends = 0x0c, on_curve = 0x10,
+    xs = 0x14, ys = 0x18 /* halfwords */, mode = 0x1c /* hw: nonzero reads the height records 2 and 6 where zero reads the others */,
+    next_point = 0x20, previous_point = 0x24 /* halfword index of the neighbour along the contour */, extrema = 0x28 /* halfword indices of the
+    points that carry an edge */, point_flags = 0x2c /* a halfword per point (the bits below) */, curve_xs = 0x30, curve_ys = 0x34 /* the point's
+    x and y; for an off-curve point the curve's own point */, partner_before = 0x38, partner_after = 0x3c /* halfword per point: the nearest edge
+    point (0xffff none) */, in_dx = 0x44, in_dy = 0x48 /* the unit direction (2.14, a word per point) from the point to the NEXT one along the contour (for
+    an off-curve point: between the midpoints of its edges): what AUTOGRID.C calls the in-direction */, out_dx = 0x4c, out_dy = 0x50 /* the unit direction
+    arriving at the point from the PREVIOUS one (a copy of the first when the point is off-curve or the arriving edge has no length) */;
+// Point flag bits (point_flags): the first two are the edge marks the later passes set from the next two (and corners).
+inline constexpr std::uint16_t x_edge = 0x1, y_edge = 0x2, x_extremum = 0x4, y_extremum = 0x8, inflection = 0x80, corner = 0x100 /* the two directions differ
+    (their dot product is under 0x3fc3 in 2.14) */, near_x_extremum = 0x200, near_y_extremum = 0x400, in_horizontal = 0x800, in_vertical = 0x1000 /* the in
+    direction (in_dx, in_dy) is within 0x3fc2 of an axis */, out_horizontal = 0x2000, out_vertical = 0x4000 /* the out direction */;
+// The scaled font data. `scaled` (0x60 words) and `heights` (0x60 halfwords) are parallel: entries 2i and 2i+1 for the height record i (0..9: the
+// height and its shift), entries 0x48.. the x stem widths (3 a group, 4 groups) and 0x54.. the y stem widths. `scaled` is the value for the size in 26.6.
+inline constexpr std::uint32_t scaled = 0x60, heights = 0x1e0, table_entries = 0x60, x_stems = 0x48, y_stems = 0x54;  // x_stems: the entry the others snap to
+inline constexpr std::uint32_t units_per_em = 0x2a0 /* hw */, size_x = 0x2a4, size_y = 0x2a8 /* the size in pixels (the scale is 0x40 times it) */,
+    flavor = 0x2ac /* 1 at creation: adds the +9 offsets of the height scaling */;
+// The five bands the heights split y into (limits at 0x2e0 as halfwords; each band has a ratio and an offset: y' = offset + ratio * y) and the four
+// records of the limits (unrounded, grid, grid less unrounded).
+inline constexpr std::uint32_t band_records = 0x2b0, band_limits = 0x2e0 /* 4 hw */, band_numerators = 0x2e8, band_denominators = 0x2fc,
+    band_offsets = 0x310, band_ratios = 0x324 /* five words each */, limit_words = 0x33c /* the four limits as words */, limits_unordered = 0x34c;
+// The font's unscaled data (set at creation): 10 height records {height, overshoot, shift} of 6 bytes and two groups of 12 stem widths.
+inline constexpr std::uint32_t capacity = 0x350 /* points */, height_records = 0x354, x_stem_widths = 0x390, y_stem_widths = 0x3a8, ready = 0x44c /* byte */,
+    keep_flat = 0x454 /* word: nonzero makes the size's flat byte 0 */, object_size = 0x45c;
+}
+// autogrid_b: the rest of the object (the handle 0x107555d0 makes), named from the callbacks, the hint execution and the constructor.
+namespace autogrid {
+inline constexpr std::uint32_t end_stamp = 0x458 /* 0x0fa55af0: the handle is valid when both stamps are */;
+inline constexpr std::uint32_t stamp_value = 0xa5a0f5a5, end_stamp_value = 0x0fa55af0;
+// The edge records the hint execution builds (record_count of them, record_capacity at most; 8 bytes each, sorted by priority): +0 kind (1 a point
+// that carries the flag bit 0x40, 3 a link of two points), +1 class (1 the in-direction is off the x axis, 2 off the y axis, 0xff on both), +2 direction
+// (1 follows the point before, 0 the one after), +3 priority (the sort key), +4 and +6 halfword point indices (the linked point, the point).
+inline constexpr std::uint32_t record_count = 0x54, record_capacity = 0x58, records = 0x5c, record_size = 8;
+// The original (unfitted) coordinates in 26.6, a word per point (the hint input's words are fitted in place), a block the constructor makes of `capacity` bytes, the
+// halfword table at 0x3c0 (2, 0x10, 0x10, 0x20, 0, 0x100, 0: the constructor's constants), the search for the stem width the passes bisect (high, low and
+// mid bounds, the number of steps, the last error and whether the width moved), the memory object, and the flag 107551c0 sets with the font's hint data.
+inline constexpr std::uint32_t constants = 0x3c0, original_xs = 0x3d0, original_ys = 0x3d4, bytes_3d8 = 0x3d8, search_high = 0x428, search_low = 0x42c,
+    search_mid = 0x430, search_steps = 0x434, search_error = 0x438, search_moved = 0x43c, data_set = 0x44d /* byte */, mem = 0x450;
+}
+// The record the renderer builds for the hinter on its stack (0x1076... in render_glyph): the glyph's arrays, the fitted coordinates as words, and two outputs.
+namespace hint_input {
+inline constexpr std::uint32_t contour_count = 0x00 /* hw */, point_count = 0x02 /* hw */, contour_starts = 0x04, contour_ends = 0x08, xs = 0x0c, ys = 0x10 /* halfwords */,
+    on_curve = 0x14, x_words = 0x18, y_words = 0x1c /* 26.6 words, fitted in place */, advance = 0x20 /* output: the advance in 26.6 */, advance_pixels = 0x24 /* output */;
 }
 }

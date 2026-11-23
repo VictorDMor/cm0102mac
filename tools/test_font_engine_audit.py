@@ -193,8 +193,19 @@ ROUTED = frozenset({0x10767ce0, 0x10767d40, 0x10767dc0, 0x10767e40, 0x10767eb0, 
                     0x10757020, 0x10757080, 0x107570e0, 0x10757150, 0x107571a0, 0x107571f0, 0x10757290, 0x10757420,
                     0x10757470, 0x10757490, 0x107574a0, 0x107574c0, 0x107574f0, 0x10757510, 0x10757560, 0x10757580,
                     0x10757650, 0x10757790, 0x10757ab0, 0x10757bd0, 0x10757ca0, 0x10757dc0,
+                    # ghints
+                    0x1075ac40, 0x1075acd0, 0x1075ad60, 0x1075ae30, 0x1075af60,
+                    # hstrat97
+                    0x1075c980, 0x1075ca60, 0x1075cbc0,
                     # t2k_core
-                    0x1075e960, 0x1075eb10, 0x1075ece0, 0x1075eef0, 0x1075f870, 0x1075f980, 0x1075fa10, 0x10760e30, 0x10760f50})
+                    0x1075e960, 0x1075eb10, 0x1075ece0, 0x1075eef0, 0x1075f870, 0x1075f980, 0x1075fa10, 0x10760e30, 0x10760f50,
+                    # autogrid_a
+                    0x10751350, 0x10751b10, 0x10751bd0, 0x10751eb0, 0x10751fd0, 0x107522b0, 0x107524b0, 0x10752990, 0x10753110,
+                    # autogrid_b
+                    0x10753560, 0x107536b0, 0x107537c0, 0x10753980, 0x10753a80, 0x10753ab0, 0x10753bf0, 0x10753c30, 0x10753c70, 0x10753cd0,
+                    0x10753d20, 0x10753d50, 0x10753d60, 0x10753d70, 0x10753e70, 0x10753f70, 0x10753fa0, 0x10753fd0, 0x10754050, 0x107540d0,
+                    0x10754130, 0x10754190, 0x10754370, 0x10754550, 0x107545b0, 0x10754610, 0x10754810, 0x107548d0, 0x10754990, 0x10754cd0,
+                    0x10754f70, 0x10754ff0, 0x107551c0, 0x107552b0, 0x107555d0, 0x10755840, 0x10755930})
 # Per unit: routines, instructions (the inventory the brief's block list is built on).
 UNIT_COUNTS = {'AUTOGRID': (46, 4432), 'FNT': (125, 5069), 'GHINTS': (5, 840), 'GLYPH': (6, 1018), 'HSTRAT97': (3, 1477),
                'STYLE': (3, 549), 'T2K': (9, 2484), 'T2KEXTRA': (1, 126), 'T2KSC': (9, 1821), 'T2KSTRM': (3, 101),
@@ -378,7 +389,7 @@ class FontEngineAuditTests(unittest.TestCase):
     def test_exactly_the_routed_blocks_are_routed_and_hooked_and_the_hook_checks_fail_when_they_should(self):
         from compile_recomp import OWNER_REPLACEMENTS, SEMANTIC_REPLACEMENTS, generate_page
         pinned = {a: (b, d) for a, b, _, d in CONTRACTS}
-        self.assertFalse(audit.COMPLETE)
+        self.assertTrue(audit.COMPLETE)
         listed = audit.rewritten(drafts=True)
         for entry, end, expected in listed:
             self.assertEqual(pinned[entry], (end, expected))
@@ -391,9 +402,16 @@ class FontEngineAuditTests(unittest.TestCase):
         self.assertEqual([owner for at, owner in SEMANTIC_REPLACEMENTS if at in ENTRIES], [])
         with closing(sqlite3.connect(EXPORT / 'instructions.sqlite')) as db:
             audit.require_font_engine_index(db)
-            # Every entry routed would be complete: the completeness check refuses the incomplete state.
-            with self.assertRaisesRegex(ValueError, 'requires all 263'):
-                audit.require_font_engine_index(db, complete=True)
+            # The completeness check refuses a set with one entry short of production (a draft).
+            with tempfile.TemporaryDirectory() as directory:
+                candidate = Path(directory) / 'routines.inc'
+                first, end, _, pinned = CONTRACTS[0]
+                lines = ''.join(f'FONT_ENGINE_ROUTINE(0x{a:x}, 0x{b:x}, R3, "{d}", name)\n' for a, b, _, d in CONTRACTS)
+                candidate.write_text(lines)
+                audit.require_font_engine_index(db, candidate, complete=True)
+                candidate.write_text(lines.replace(f'FONT_ENGINE_ROUTINE(0x{first:x},', f'FONT_ENGINE_DRAFT(0x{first:x},', 1))
+                with self.assertRaisesRegex(ValueError, 'requires all 263'):
+                    audit.require_font_engine_index(db, candidate, complete=True)
         selected = set(self.by_address)
         pages = sorted({entry >> 12 for entry in ROUTED} | {0x10763})  # the routed pages and one with unrouted entries only
         for page in pages:

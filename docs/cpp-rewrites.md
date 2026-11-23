@@ -2987,3 +2987,30 @@ Block files: `native/font_engine_*.cpp` (`util`: the fixed-point helpers; `strea
   reach a leaver. The callers read r9 and r10 of every entry, so the caret routine and the component merge leave them as their originals do and are compared on them. The hinter (dormant for the game:
   cmd = 2 asks for none) is called as the original calls it; its hint data buffer on the stack is copied unwritten for a font without a T2KG table (the original copies the stack's leftovers: not reproducible, dormant). Cases run on the snapshot's three
   real scalers with poked fields, real longjmps through each entry's setjmp and the hinter's callees answered; the end-to-end run, its error sweep and nineteen source controls are in `.local/rewrites/font_engine/brief.md`.
+- **GHINTS.C, the global hint data** (`font_engine_ghints.cpp`, 5 routines: the highest and lowest y of a glyph's contours 0x1075ac40/0x1075acd0, the T2KG reader 0x1075ad60, the median height of a letter list
+  0x1075ae30 and the analysis that measures the 0x6c-byte data from the font's own glyphs 0x1075af60): the font code never asks for hinting (hint = 0, cmd = 2), so they run only under the hinted end-to-end
+  mode (`cm-font-engine-checks --end-to-end-hinted`, test `font_engine_end_to_end_hinted`: the same original-against-production comparison with the hinter driven through `T2K_NewTransformation` with hint = 1 and the
+  grid commands of `render_glyph`; symbol.ttf has no letters to measure, so the original's own size setup divides by zero there and the run compares up to the same fault). The leaves and the reader leave r3-r10 as the
+  original; the median and the analysis are compared on r9/r10 (their glyph-reader callees leave r4-r8 their own way). The analysis's two sample arrays stay in the guest frame (with no sample at all the original
+  reads their first entries as the stack left them). Cases: 1,641 (stale-stack medians, random letter lists, glyph limits, answered analyses with real result arrays), mutated runs and the call trace with no finding.
+- **HSTRAT97.C, the hint strategy** (`font_engine_hstrat97.cpp`, all three routines, in production, dormant for the game): the heap sift 0x1075c980 and the score polynomial 0x1075ca60 (both exact in r3-r10, 9,260 cases) and the
+  strategy 0x1075cbc0 (1,338 instructions): per axis the link edges and the extremum points of the glyph become 14-byte records (a block and an array of pointers from the memory object, heap-sorted by coordinate through the
+  sift, grouped, merged, kept), then the stems are placed record by record through AUTOGRID.C's callbacks (seven by pointer through the indirect glue, the rest by `bl`), the bisection of the stem width restarting the records after
+  the last bisected one when it moves. `Strategy` keeps the original's r13-r31 (`g`) and r3-r10 (`v`) as its instructions leave them: the callbacks read all of r3-r10 (the glue's targets are unknown) and the release leaver is
+  called with r28-r31 as the loops left them. Cases: 1,144 on synthetic handles in the scratch area (callees answered, the bisection real, all real; empty and negative last index, point -1, pairs in one group, 60 large shapes,
+  flags poked away at a callee's dispatch, a glue-target marker poke), `--mutate 4 --call-trace --argument-masks`: findings 0; branch coverage 332 branches, every outcome hit but the ones proved unreachable (comment in the
+  source). The hinted end-to-end run (real glyphs of the two .t2k fonts, 772,240 strategy entries) is identical and 13 of 20 source controls make it differ.
+
+`autogrid_a` (AUTOGRID.C's first half, 9 entries, in `native/font_engine_autogrid_a.cpp`; dormant for the game): the autogridder's height and stem
+analysis (the size scaling of the font's heights and stems, the band map, the nearest height, the direction normalisation, the per-point directions, the
+extrema, the inflections, the point classification and the edge partners) on the object `autogrid::` of the detail header. Every routine leaves r9 and
+r10 as the original does (the chain up to the hint size entry passes them on); the cases start from objects the original engine builds for a real scaler
+and real glyphs (`autogrid_a/` under `.local/rewrites/font_engine`), the hinted end-to-end mode runs all nine, and 118 one-expression source controls in a
+private copy of the shared library found 102 changes (the 16 not found are equivalent, unobservable or an unreached boundary: see the brief).
+- **AUTOGRID.C, second half** (`font_engine_autogrid_b.cpp`, 37 routines; `autogrid::` and `hint_input::` in the detail header): the hint handle's creation (nine allocations in
+  the original's order), per-glyph run (`hint_glyph`: the glyph's words copied to the originals, the flavor/data assertions, then the run of the passes: rings, edge records
+  sorted by priority through the game's byte move, the strategy or the stem widths) and deletion (nine `tsi_DeAllocMem` calls at its own frame's sp), and the small
+  callbacks the strategy calls directly or through the glue (edge placement, stem-width snapping, bisection, interpolation of untouched points, standard widths). Dormant for the
+  game (FONT.CPP passes hint = 0): the cases and the hinted end to end are the evidence (35 of the 37 entries are reached by it; each is sensitive to a source control there
+  except the two `widest_stem` callbacks, whose result nothing reads). Registers: callbacks and leaves compared in full, the five entries that call other blocks' routines on
+  r3, r9, r10. Cases' `answers` cannot stand in for a routine another block has routed (the original run declines the hook): the cases run those callees for real.

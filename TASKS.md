@@ -20,12 +20,13 @@ the scrollback. Remove ticked items once their commit is pushed.
 
 Every finished module still reaches the same generated code through the game's assertion box (0x10739890 -> 0x10768810 / 0x10769b60): the font engine and the drawing layer. Rewriting it is what lets a module run with no PowerPC under it. `.local/inventory/2026-11-22/floor.json` lists the closure from DATE.CPP followed through C++ owners (234 routines, 42,798 instructions; the inventory report counts 154 / 22,259 without them). The font engine is rewritten, not replaced by Core Text (decided 2026-11-06).
 
-- [ ] Font engine (`tools/font_engine_audit.py`; brief `.local/rewrites/font_engine/brief.md`). Inventory closed: 263 routines, 22,909 instructions, 0x10751350..0x10768080, 14 units (AUTOGRID, FNT, GHINTS, GLYPH, HSTRAT97, STYLE, T2K, T2KEXTRA, T2KSC, T2KSTRM, T2KTT, TRUETYPE, TSIMEM, UTIL; FNT, STYLE and UTIL are guessed names). In production: 209 of 263 (2026-11-22/23: every block the game runs: util, stream, tsimem, style, t2kextra, glyph, truetype_glyph, t2ktt_head, truetype_tables, t2ksc, t2k_core, fnt_a, fnt_b, fnt_c). The gate is `font_engine_end_to_end` (every glyph of the three shipped fonts, original against C++, 56 s) on top of the per-entry cases.
-  - Left: the hinter the shipped fonts never run (ghints 840, hstrat97 1,477, autogrid_a 2,167, autogrid_b 2,265): cases of their own, no end-to-end evidence.
-  - `font_engine_equivalence` takes about 12 minutes with every block; move sweeps behind `CM_FONT_ENGINE_EXHAUSTIVE` if it gets in the way.
-  - `tools/register_contract.py --after` follows registers only to the direct caller's return and treats every `bl` as writing r4-r10: sixteen exemptions fell in review. Fix the tool or stop using it for exemptions.
-  - Stack: the checker compares every entry into the five leavers (stack pointer, link register, the registers the leaver saves); `font_engine_stack_exact.inc` lists the entries whose whole dead stack is compared too. The rule is in the brief.
-  - Unreproduced: one t2ktt_head run showed a leaver-log difference (byte 0x600e0023, original 0x88, rewrite 0x8c: a link register 4 apart) while other agents were rebuilding the checker; nine later runs were clean. If it returns, capture the case label first.
+- [x] Font engine: delivered 2026-11-23, 263 of 263 routines in production (`tools/font_engine_audit.py`, `COMPLETE`; brief `.local/rewrites/font_engine/brief.md`). Open, none blocking:
+  - `font_engine_equivalence` takes about 20 minutes: move sweeps behind `CM_FONT_ENGINE_EXHAUSTIVE`.
+  - `tools/register_contract.py --after` follows registers only to the direct caller's return and treats every `bl` as writing r4-r10: twenty exemptions fell in review. Fix the tool or stop using it for exemptions.
+  - The r4-r8 exemption of 0x10755930 holds if the callback FONT.CPP calls at 0x1074f9d0 reads at most six arguments: settle it when FONT.CPP is rewritten.
+  - Dead stack under non-leaver callees (the byte move in 0x10754990, the allocator in the hint handle's constructor and 0x10754cd0) holds the caller's registers, not the original's: free under the per-reader contract, no reader known.
+  - A case that enters an inner routine directly runs with the jump buffer an earlier API call left: a mutated run that raises resumes on a dead frame. The direct renderer cases poison the buffer; do the same where it shows up.
+  - Unreproduced: one t2ktt_head run showed a leaver-log difference (byte 0x600e0023, original 0x88, rewrite 0x8c) while other agents were rebuilding the checker; later runs were clean.
   - The call trace pairs only the first 32 cases of an entry: rare-site cases must come first, or lift the limit.
   - The fixed-point helpers carry r4-r8 through each call for generated callers (`Leftovers`); drop that once every caller is C++.
   - `tools/game_inventory.py` turns a `MODULES` key into `<KEY>.CPP`: its next report will show AUTOGRID.CPP beside AUTOGRID.C.

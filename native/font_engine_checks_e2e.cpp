@@ -9,6 +9,13 @@
 // log) and the allocator tables are compared between the two runs byte for byte, then the record is released through the
 // font code's own 0x10750200. The two runs are two forked children: the original with every hook declining, the other with the
 // routed entries (the production path). A run reports the engine entries the dispatcher saw, the sizes and styles it covered.
+//
+// The hinted mode (--end-to-end-hinted, font_engine_end_to_end_hinted): the same two runs, but the glyphs are rendered with the hinter on, through the
+// engine's own entries (the game never asks: FONT.CPP passes hint = 0 and cmd = 2). For each style set and size the font code's selector makes the
+// scaler as before, then for each (hint flag, command, quality) variant the hinter is released (purge level 2) and the font's global hint data
+// (sfnt + 0x38) is released, so the variant makes both again; T2K_NewTransformation 0x1075eef0 is called with the variant's hint flag, and the engine's
+// character entry 0x10760e30 with its command on each character code the font maps. The commands reach the hinter through prepare_hinting
+// 0x1075eb10: a grid bit (cmd & 0x281) makes the glyph go through the autogridder 0x107552b0; hint = 1 prepares it at the transformation.
 #include "font_engine_checks.hpp"
 #include "allocator_adapter.hpp"
 #include "application_exit.hpp"
@@ -29,6 +36,7 @@
 #include <string>
 #include <vector>
 
+namespace cm::aot { extern void (*font_engine_leaver_probe)(State&, std::uint32_t); }
 namespace cm::aot::font_engine_checks {
 namespace {
 constexpr std::uint32_t game_toc = 0x108bba90;
@@ -101,6 +109,11 @@ struct Plan {
     // The characters requested through the cache and the cmap codes rendered by the engine's entry (the error sweep uses a few).
     unsigned first_char = 0x20, last_char = 0xff;
     std::size_t code_limit = ~std::size_t(0);
+    // The hinted mode: (hint flag of the transformation, render command, quality byte) and the step between the mapped codes rendered.
+    bool hinted = false;
+    struct Variant { unsigned hint, cmd, quality; };
+    std::vector<Variant> variants;
+    std::size_t code_stride = 1, code_first = 0;
 };
 
 // The error sweep (CM_FONT_ENGINE_E2E_FAULTS): a fault injected into the allocator at the n-th malloc TSIMEM.C's tsi_AllocMem makes
@@ -111,7 +124,7 @@ struct Fault { std::string kind; unsigned nth = 0; };
 Fault g_fault;
 unsigned g_allocations = 0, g_fired = 0;
 // What the two forked children saw, counted in memory they share with the parent: injections that fired and longjmp transfers.
-struct Seen { unsigned fired, transfers; };
+struct Seen { unsigned fired, transfers, renders, errors, pinned; std::uint64_t dispatch[64], hooked[64]; };
 Seen* seen = [] {
     void* shared = ::mmap(nullptr, sizeof(Seen), PROT_READ | PROT_WRITE, MAP_SHARED | MAP_ANON, -1, 0);
     if (shared == MAP_FAILED) throw std::runtime_error("mmap");
@@ -151,10 +164,37 @@ bool inject_fault(State& s) {
     }
     return false;
 }
+// The hinter's entries: GHINTS.C, HSTRAT97.C and AUTOGRID.C (blocks ghints, hstrat97, autogrid_a, autogrid_b).
+constexpr std::uint32_t hinter_entries[] = {  // 54, as the audit lists them (sorted below)
+    0x1075ac40, 0x1075acd0, 0x1075ad60, 0x1075ae30, 0x1075af60, 0x1075c980, 0x1075ca60, 0x1075cbc0,
+    0x10751350, 0x10751b10, 0x10751bd0, 0x10751eb0, 0x10751fd0, 0x107522b0, 0x107524b0, 0x10752990, 0x10753110,
+    0x10753560, 0x107536b0, 0x107537c0, 0x10753980, 0x10753a80, 0x10753ab0, 0x10753bf0, 0x10753c30, 0x10753c70, 0x10753cd0, 0x10753d20, 0x10753d50,
+    0x10753d60, 0x10753d70, 0x10753e70, 0x10753f70, 0x10753fa0, 0x10753fd0, 0x10754050, 0x107540d0, 0x10754130, 0x10754190, 0x10754370, 0x10754550,
+    0x107545b0, 0x10754610, 0x10754810, 0x107548d0, 0x10754990, 0x10754cd0, 0x10754f70, 0x10754ff0, 0x107551c0, 0x107552b0, 0x107555d0, 0x10755840,
+    0x10755930};
+// The index of a hinter entry in hinter_entries, or -1.
+int hinter_index(std::uint32_t entry) {
+    for (unsigned n = 0; n < std::size(hinter_entries); ++n) if (hinter_entries[n] == entry) return int(n);
+    return -1;
+}
 std::map<std::uint32_t, std::uint64_t> dispatched;  // the engine entries the dispatcher saw in this child (written out at the end)
+constexpr std::uint32_t hint_data_maker = 0x1075af60;
+bool g_pin_stack = false, g_original_child = false;
 bool probe(State& s) {
     if (inject_fault(s)) return true;
-    if (s.pc >= module_start && s.pc < module_end) ++dispatched[s.pc];
+    if (s.pc >= module_start && s.pc < module_end) {
+        ++dispatched[s.pc];
+        if (g_original_child) if (const auto n = hinter_index(s.pc); n >= 0) __atomic_fetch_add(&seen->dispatch[n], 1, __ATOMIC_SEQ_CST);
+    }
+    // The hinter's own analysis (0x1075af60, for a font without a T2KG table or with a style callback) leaves bytes of the 0x6c buffer the caller passes in r5
+    // unwritten, and the caller then copies the whole buffer (stack leftovers) into the font's hint data block: the bytes of the original's frame and of a
+    // native frame differ. Both sides fill the buffer with one value before the analysis runs, so what it leaves unwritten is the same.
+    if (g_pin_stack && s.pc == hint_data_maker) {
+        guest::Cpu c(s);
+        static const unsigned pin = std::getenv("CM_FONT_ENGINE_E2E_PIN_VALUE") ? unsigned(std::strtoul(std::getenv("CM_FONT_ENGINE_E2E_PIN_VALUE"), nullptr, 16)) : 0xa5;
+        for (std::uint32_t n = 0; n < 0x6c; ++n) c.put8(c.r(5) + n, pin);
+        if (g_original_child) __atomic_fetch_add(&seen->pinned, 1, __ATOMIC_SEQ_CST);
+    }
     constexpr std::uint32_t exit_entry = 0x1076f7d0, dialog_entry = 0x10769b60;
     if (s.pc == exit_entry) throw ApplicationExit{};
     if (s.pc != dialog_entry) return false;
@@ -164,6 +204,7 @@ bool probe(State& s) {
 
 std::vector<Font> g_fonts;
 Plan g_plan;
+void (*previous_probe)(State&, std::uint32_t) = nullptr;
 std::vector<std::vector<std::uint32_t>> g_codes;
 // The sweep, in the current process (a forked child): `original` runs every hook declining.
 void sweep(State& s, bool original) {
@@ -175,6 +216,15 @@ void sweep(State& s, bool original) {
     dispatch_probe = probe;
     s.budget = ~std::uint64_t(0) / 2;
     install_leaver_check(s);
+    g_original_child = original;
+    g_pin_stack = plan.hinted && !std::getenv("CM_FONT_ENGINE_E2E_NO_PIN");
+    if (plan.hinted) {  // count the original's entries at every hooked routine too (a same-page call never reaches the dispatcher)
+        previous_probe = font_engine_leaver_probe;
+        font_engine_leaver_probe = [](State& state, std::uint32_t entry) {
+            if (g_original_child) if (const auto n = hinter_index(entry); n >= 0) __atomic_fetch_add(&seen->hooked[n], 1, __ATOMIC_SEQ_CST);
+            if (previous_probe) previous_probe(state, entry);
+        };
+    }
     guest::Cpu c(s);
     c.set(2, game_toc);
     for (unsigned n = 13; n < 32; ++n) c.set(n, 0x5a000000u + n * 0x10101u);
@@ -209,6 +259,74 @@ void sweep(State& s, bool original) {
         s.memory.write<1>(record, 1);  // the record's first byte: loaded
         put(0xf0f00000u + std::uint32_t(index));
         put(word(s, error));
+        if (plan.hinted) {
+            const auto matrix = work + 0x40;
+            for (const auto flags : plan.flags)
+                for (const auto size : plan.sizes) {
+                    call(0x10750320, {cell, flags, size});  // the font code's selector: the sfnt with the style's callbacks, the scaler, hint = 0
+                    const auto scaler = word(s, record + 0x14);
+                    const auto sfnt = word(s, scaler + 0x144), memory_object = word(s, scaler + 4);
+                    const auto dump_data = [&](unsigned hint_flag) {
+                        // CM_FONT_ENGINE_E2E_DATA_DUMP=file: the 0x6c bytes of the font's hint data after the transformation (the original's run), to compare two runs.
+                        if (const char* dump = std::getenv("CM_FONT_ENGINE_E2E_DATA_DUMP"); dump && original && word(s, sfnt + 0x38)) {
+                            std::ofstream out(dump, std::ios::app);
+                            out << index << ' ' << flags << ' ' << size << ' ' << hint_flag << ':';
+                            for (std::uint32_t n = 0; n < 0x6c; ++n) { char text[4]; std::snprintf(text, sizeof text, "%02x", unsigned(s.memory.read<1>(word(s, sfnt + 0x38) + n))); out << text; }
+                            out << '\n';
+                        }
+                    };
+                    for (const auto& variant : plan.variants) {
+                        // A fresh hinter and fresh global hint data for each variant.
+                        if (word(s, scaler + 0x148)) {
+                            s.memory.write<4>(error, 0);
+                            call(0x1075f980, {scaler, 2, error});
+                            put(0xbeef0001u); put(word(s, error));
+                        }
+                        if (const auto data = word(s, sfnt + 0x38)) {
+                            call(0x10767bb0, {memory_object, data});
+                            s.memory.write<4>(sfnt + 0x38, 0);
+                        }
+                        // The matrix FONT.CPP builds: the size in 16.16 on the diagonal, a skew for the italic bits.
+                        const std::uint32_t diagonal = (size & 0xff) << 16;
+                        s.memory.write<4>(matrix, diagonal);
+                        s.memory.write<4>(matrix + 4, flags & 4 ? diagonal / 4 : flags & 8 ? 0u - diagonal / 4 : 0u);
+                        s.memory.write<4>(matrix + 8, 0);
+                        s.memory.write<4>(matrix + 12, diagonal);
+                        s.memory.write<4>(error, 0);
+                        try { call(0x1075eef0, {scaler, variant.hint, 0x60, 0x60, matrix, 1, error}); }
+                        catch (const std::exception& e) {
+                            if (std::getenv("CM_FONT_ENGINE_E2E_TRACE") && original)
+                                std::cerr << "stopped: " << e.what() << " in the transformation at pc " << hex_address(s.pc) << " flags " << flags << " size " << size << " hint " << variant.hint << '\n';
+                            dump_data(variant.hint);
+                            throw;
+                        }
+                        put(0xbeef0002u | variant.hint << 8); put(word(s, error));
+                        for (const auto field : {0x12cu, 0x130u, 0x134u, 0x138u, 0x148u}) put(word(s, scaler + field));
+                        if (word(s, error) != 0 && original) __atomic_fetch_add(&seen->errors, 1, __ATOMIC_SEQ_CST);
+                        for (std::size_t n = plan.code_first, rendered = 0; n < codes[index].size() && rendered < plan.code_limit; n += plan.code_stride, ++rendered) {
+                            const auto code = codes[index][n];
+                            s.memory.write<4>(error, 0);
+                            try { call(0x10760e30, {scaler, code, 0, 0, variant.quality, variant.cmd, error}); }
+                            catch (const std::exception& e) {
+                                if (std::getenv("CM_FONT_ENGINE_E2E_TRACE") && original)
+                                    std::cerr << "stopped: " << e.what() << " at pc " << hex_address(s.pc) << " font " << index << " flags " << flags << " size " << size << " hint " << variant.hint
+                                              << " cmd " << std::hex << variant.cmd << std::dec << " quality " << variant.quality << " code " << code << " lr " << hex_address(std::uint32_t(s.r<4>(4128))) << '\n';
+                                dump_data(variant.hint);
+                                throw;
+                            }
+                            if (original) __atomic_fetch_add(&seen->renders, 1, __ATOMIC_SEQ_CST);
+                            if (word(s, error) != 0 && original) __atomic_fetch_add(&seen->errors, 1, __ATOMIC_SEQ_CST);
+                            put(0xc0de0000u | code);
+                            put(word(s, error));
+                            for (const auto field : {0xa8u, 0xa4u, 0xd0u, 0xd8u, 0xd4u, 0x94u, 0x98u, 0x9cu, 0xa0u, 0xb0u, 0xb4u, 0xb8u, 0xbcu}) put(word(s, scaler + field));
+                            const auto hash = hash_of(word(s, scaler + 0xdc), word(s, scaler + 0xd8) * word(s, scaler + 0xd4));
+                            put(std::uint32_t(hash >> 32)); put(std::uint32_t(hash));
+                            put(0);
+                        }
+                        dump_data(variant.hint);
+                    }
+                }
+        } else
         for (const auto flags : plan.flags)
             for (const auto size : plan.sizes) {
                 // The game's glyph path: the selector, then each character through the cache.
@@ -238,7 +356,7 @@ void sweep(State& s, bool original) {
                 }
             }
         // The interpreter mode (blocks fnt_a/b/c): synthetic programs on the font's hint font, if it has one (symbol.ttf's fpgm has run).
-        if (!std::getenv("CM_FONT_ENGINE_E2E_NO_INTERPRETER"))
+        if (!plan.hinted && !std::getenv("CM_FONT_ENGINE_E2E_NO_INTERPRETER"))
             if (const auto sfnt = word(s, record + 0x10))
                 if (const auto hint = word(s, sfnt + 4))
                     for (const auto value : run_interpreter_programs(s, hint)) put(value);
@@ -308,7 +426,7 @@ int run_fault_sweep(State& s, const std::string& spec) {
 }
 }
 
-int run_end_to_end(State& s, bool list_only, bool exhaustive, bool corrupt, const std::vector<std::filesystem::path>& files) {
+int run_end_to_end(State& s, bool list_only, bool exhaustive, bool corrupt, const std::vector<std::filesystem::path>& files, bool hinted) {
     auto fonts = find_fonts(s);
     // Font files given on the command line (the game's other shipped files): copied into a mapped area beside the snapshot's.
     constexpr std::uint32_t file_area = 0x64000000;
@@ -362,6 +480,51 @@ int run_end_to_end(State& s, bool list_only, bool exhaustive, bool corrupt, cons
         for (unsigned size = 6; size <= 72; ++size) size_set.insert(size);
         plan.codes_at_every_size = true;
     }
+    if (hinted) {
+        // The hinted plan: its own style sets and sizes (the selector's bits 0/1 give the bold and italic callbacks, which send the hinter's data through the
+        // analysis 0x1075af60 even for a font with a T2KG table; bits 2/3 skew the matrix) and the (hint, command, quality) variants.
+        flag_set.clear();
+        size_set.clear();
+        plan.hinted = true;
+        plan.variants = {{0, 0x03, 5}, {1, 0x03, 5}, {1, 0x02, 5}, {0, 0x203, 5}, {1, 0x83, 5}, {0, 0x01, 5}, {0, 0x03, 0}, {0, 0x82, 5}, {0, 0x83, 5}};
+        if (exhaustive) {
+            unsigned slice = 0, slices = 1;
+            if (const char* text = std::getenv("CM_FONT_ENGINE_E2E_SLICE")) std::sscanf(text, "%u/%u", &slice, &slices);
+            for (unsigned f = 0; f < 0x10; ++f) if (f % slices == slice) flag_set.insert(f);
+            for (unsigned size = 6; size <= 72; ++size) size_set.insert(size);
+            plan.variants = {};
+            for (const unsigned hint : {0u, 1u})
+                for (const unsigned cmd : {0x01u, 0x02u, 0x03u, 0x81u, 0x82u, 0x83u, 0x201u, 0x203u, 0x283u, 0x13u})
+                    for (const unsigned quality : {0u, 5u}) plan.variants.push_back({hint, cmd, quality});
+        } else {
+            flag_set = {0, 1, 2, 3, 4, 5, 8};
+            for (const unsigned size : {6u, 7u, 8u, 9u, 10u, 11u, 12u, 13u, 14u, 16u, 18u, 20u, 22u, 24u, 28u, 32u, 40u, 48u, 60u, 72u}) size_set.insert(size);
+            plan.code_stride = 2;
+        }
+    }
+    if (hinted) {
+        // Overrides for a debugging or sliced run: CM_FONT_ENGINE_E2E_FLAGS=0,1 CM_FONT_ENGINE_E2E_SIZES=9,14 CM_FONT_ENGINE_E2E_VARIANTS=hint:cmd:quality,... (cmd in hex)
+        // CM_FONT_ENGINE_E2E_STRIDE=n (every n-th mapped code) CM_FONT_ENGINE_E2E_FIRST=n (start at the n-th mapped code) CM_FONT_ENGINE_E2E_LIMIT=n (at most n codes after the start).
+        const auto list = [](const char* name) {
+            std::vector<unsigned> values;
+            if (const char* text = std::getenv(name)) for (const char* at = text; *at;) { char* end; values.push_back(unsigned(std::strtoul(at, &end, 10))); at = *end ? end + 1 : end; }
+            return values;
+        };
+        if (const auto values = list("CM_FONT_ENGINE_E2E_FLAGS"); !values.empty()) flag_set = std::set<unsigned>(values.begin(), values.end());
+        if (const auto values = list("CM_FONT_ENGINE_E2E_SIZES"); !values.empty()) size_set = std::set<unsigned>(values.begin(), values.end());
+        if (const char* text = std::getenv("CM_FONT_ENGINE_E2E_VARIANTS")) {
+            plan.variants.clear();
+            unsigned hint, cmd, quality; int used = 0;
+            for (const char* at = text; std::sscanf(at, "%u:%x:%u%n", &hint, &cmd, &quality, &used) == 3;) {
+                plan.variants.push_back({hint, cmd, quality});
+                at += used;
+                if (*at == ',') ++at;
+            }
+        }
+        if (const auto values = list("CM_FONT_ENGINE_E2E_STRIDE"); !values.empty()) plan.code_stride = values[0];
+        if (const auto values = list("CM_FONT_ENGINE_E2E_FIRST"); !values.empty()) plan.code_first = values[0];
+        if (const auto values = list("CM_FONT_ENGINE_E2E_LIMIT"); !values.empty()) plan.code_limit = values[0];
+    }
     plan.flags.assign(flag_set.begin(), flag_set.end());
     plan.sizes.assign(size_set.begin(), size_set.end());
     const char* faults = std::getenv("CM_FONT_ENGINE_E2E_FAULTS");
@@ -373,14 +536,69 @@ int run_end_to_end(State& s, bool list_only, bool exhaustive, bool corrupt, cons
     for (const auto& font : distinct) g_codes.push_back(mapped_codes(s, font));
     std::size_t mapped = 0;
     for (const auto& list : g_codes) mapped += list.size();
-    std::cout << "plan: " << plan.flags.size() << " style sets, " << plan.sizes.size() << " sizes, " << distinct.size() << " fonts, "
-              << 224 * plan.flags.size() * plan.sizes.size() * distinct.size() << " cached glyph requests, " << mapped << " mapped codes\n";
+    if (hinted)
+        std::cout << "plan (hinted): " << plan.flags.size() << " style sets, " << plan.sizes.size() << " sizes, " << distinct.size() << " fonts, " << plan.variants.size()
+                  << " (hint, command, quality) variants, every " << plan.code_stride << (plan.code_stride == 1 ? "st" : "nd") << " of " << mapped << " mapped codes\n";
+    else
+        std::cout << "plan: " << plan.flags.size() << " style sets, " << plan.sizes.size() << " sizes, " << distinct.size() << " fonts, "
+                  << 224 * plan.flags.size() * plan.sizes.size() * distinct.size() << " cached glyph requests, " << mapped << " mapped codes\n";
     s.memory.map(log_base, log_size);
     routine_check_native_contract = true;  // the entries are compared one by one in the cases; here what the runs leave in memory
     if (faults) return run_fault_sweep(s, faults);
+    if (hinted) {
+        // One comparison per (font, variant): the hinter faults on a font that has nothing to measure (symbol.ttf has no letter glyphs: its analysis stores zero
+        // heights and the first size setup divides by them, in the original and in the production run alike), and a fault ends a run, so a variant that faults
+        // is compared up to the fault ("ended in the same fault", the memory both leave still compared) and does not stop the others.
+        const auto variants = plan.variants;
+        const auto fonts_now = distinct;
+        const auto codes_now = g_codes;
+        unsigned runs = 0, identical = 0, alike = 0, different = 0;
+        std::uint64_t renders = 0, errors = 0, pinned = 0;
+        std::map<std::string, std::string> by_font;  // "font n": a summary of the variants that faulted
+        for (std::size_t index = 0; index < fonts_now.size(); ++index)
+            for (const auto& variant : variants) {
+                g_fonts = {fonts_now[index]};
+                g_codes = {codes_now[index]};
+                g_plan.variants = {variant};
+                const auto reach_dispatch = std::vector<std::uint64_t>(seen->dispatch, seen->dispatch + 64), reach_hooked = std::vector<std::uint64_t>(seen->hooked, seen->hooked + 64);
+                *seen = {};
+                std::copy(reach_dispatch.begin(), reach_dispatch.end(), seen->dispatch);
+                std::copy(reach_hooked.begin(), reach_hooked.end(), seen->hooked);
+                auto lines = compare_routine_call(s, 0x10750580, sweep_original, std::getenv("CM_FONT_ENGINE_E2E_SELF") ? sweep_original : sweep_rewrite, 0, corrupt);
+                ++runs;
+                renders += seen->renders; errors += seen->errors; pinned += seen->pinned;
+                std::string original_stop, rewrite_stop;
+                for (const auto& line : lines) {
+                    if (line.starts_with("the original stopped: ")) original_stop = line.substr(22);
+                    if (line.starts_with("the rewrite stopped: ")) rewrite_stop = line.substr(21);
+                }
+                const bool faulted_alike = !original_stop.empty() && original_stop == rewrite_stop;
+                if (faulted_alike) std::erase_if(lines, [](const std::string& line) { return line.starts_with("the original stopped: ") || line.starts_with("the rewrite stopped: "); });
+                char label[64];
+                std::snprintf(label, sizeof label, "font %zu hint %u cmd %x quality %u", index, variant.hint, variant.cmd, variant.quality);
+                if (lines.empty()) { ++identical; alike += faulted_alike; if (faulted_alike) by_font[std::to_string(index)] += std::string(" [") + label + ": " + original_stop + "]"; continue; }
+                ++different;
+                std::cout << "difference at " << label << ':';
+                for (const auto& line : lines) std::cout << " | " << line;
+                std::cout << '\n';
+            }
+        std::cout << "hinted runs: " << runs << " (font x variant), " << identical << " identical (" << alike << " ended in the same fault), " << different << " different; "
+                  << renders << " glyph renders, " << errors << " non-zero error codes, " << pinned << " hint-data analyses with the stack buffer pinned\n";
+        for (const auto& [font, list] : by_font) std::cout << "  ended in the same fault, font " << font << ":" << list << '\n';
+        std::string reached, missed;
+        for (unsigned n = 0; n < std::size(hinter_entries); ++n) {
+            const auto count = std::max(seen->dispatch[n], seen->hooked[n]);
+            if (count) reached += " " + hex_address(hinter_entries[n]) + ":" + std::to_string(count);
+            else missed += " " + hex_address(hinter_entries[n]);
+        }
+        std::cout << "hinter entries reached by the original (dispatches or hook entries, all runs):" << reached << "\nhinter entries not seen:" << missed << '\n';
+        std::cout << "end-to-end hinted: " << (different ? "DIFFERENT" : "identical") << '\n';
+        return different ? 1 : 0;
+    }
     // The two runs from the same state, compared: dirty pages (the engine's heap, the glyph caches, the log), the allocator
     // tables and the registers the runs leave.
-    const auto differences = compare_routine_call(s, 0x10750580, sweep_original, sweep_rewrite, 0, corrupt);
+    // CM_FONT_ENGINE_E2E_SELF=1: the original against the original (does a run repeat itself?).
+    const auto differences = compare_routine_call(s, 0x10750580, sweep_original, std::getenv("CM_FONT_ENGINE_E2E_SELF") ? sweep_original : sweep_rewrite, 0, corrupt);
     for (const auto& line : differences) std::cout << "difference: " << line << '\n';
     std::cout << "end-to-end: " << (differences.empty() ? "identical" : "DIFFERENT") << '\n';
     return differences.empty() ? 0 : 1;

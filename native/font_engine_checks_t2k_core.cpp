@@ -71,6 +71,14 @@ FONT_ENGINE_CASES("t2k_core") {
         if (s.t2kg || s.data_block == 0) return {};
         return {w32(s.sfnt + 0x38, s.data_block)};
     };
+    // The renderer entered directly has no setjmp of its own: the memory object's jump buffer is the one an earlier API call left, whose frame is
+    // gone, and a mutated input that makes the allocator raise would resume on that dead stack (never in the game: 0x10760e30 is the one caller,
+    // under its setjmp). The buffer is filled with addresses nothing maps, so such a run stops at the same place on both sides.
+    const auto dead_jump_buffer = [&](const Scaler& s) {
+        std::vector<Write> memory;
+        for (std::uint32_t at = 0x10; at < 0x128; at += 4) memory.push_back(w32(s.mem + at, 0x0bad0000 + at));  // up to the scratch slots
+        return memory;
+    };
     const auto with = [](std::vector<Write> memory, const std::vector<Write>& more) {
         memory.insert(memory.end(), more.begin(), more.end());
         return memory;
@@ -393,10 +401,10 @@ FONT_ENGINE_CASES("t2k_core") {
         for (const std::uint32_t depth : {1u, 3u})
             for (const std::uint32_t cmd : {0xcu, 0x1cu, 0xdu})
                 for (const std::uint32_t character : {0x41u, 0x67u, 0xe9u})
-                    add(render_glyph, {{3, s.t2k}, {4, character}, {5, depth}, {6, 0}, {7, 0}, {8, 0}, {9, cmd}, r10}, hint_data(s), name(("render glyph depth " + std::to_string(depth) + " cmd " + hex(cmd) + " character " + hex(character)).c_str(), s));
+                    add(render_glyph, {{3, s.t2k}, {4, character}, {5, depth}, {6, 0}, {7, 0}, {8, 0}, {9, cmd}, r10}, with(dead_jump_buffer(s), hint_data(s)), name(("render glyph depth " + std::to_string(depth) + " cmd " + hex(cmd) + " character " + hex(character)).c_str(), s));
         for (const std::uint32_t cmd : {0xcu, 0x8u, 0x1cu, 0xeu, 0x4u, 0x2u})
             for (const std::uint32_t index : {0u, 1u, 36u, 37u, 200u, 0xffffu})
-                add(render_glyph, {{3, s.t2k}, {4, index}, {5, 0}, {6, 1}, {7, 2}, {8, 3}, {9, cmd}, r10}, hint_data(s), name(("render glyph direct cmd " + hex(cmd) + " index " + hex(index)).c_str(), s));
+                add(render_glyph, {{3, s.t2k}, {4, index}, {5, 0}, {6, 1}, {7, 2}, {8, 3}, {9, cmd}, r10}, with(dead_jump_buffer(s), hint_data(s)), name(("render glyph direct cmd " + hex(cmd) + " index " + hex(index)).c_str(), s));
     }
     // The hinted commands (dormant for the game): the hinter's callees answered so that the path goes on, then the real ones.
     for (const auto& s : scalers) {

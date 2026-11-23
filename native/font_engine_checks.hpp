@@ -91,7 +91,7 @@ inline std::string hex(std::uint32_t value) {
 void install_leaver_check(State& s);
 // font_engine_checks_fnt_e2e.cpp: the interpreter's synthetic programs on a hint font (called from the end-to-end sweep); the values to log.
 std::vector<std::uint32_t> run_interpreter_programs(State& s, std::uint32_t hint);
-int run_end_to_end(State& s, bool list_only, bool exhaustive, bool corrupt, const std::vector<std::filesystem::path>& files);
+int run_end_to_end(State& s, bool list_only, bool exhaustive, bool corrupt, const std::vector<std::filesystem::path>& files, bool hinted = false);
 using CaseList = std::function<void(const Scenario&, std::vector<Case>&)>;
 struct CaseBlock {
     CaseBlock(const char* name, CaseList list);

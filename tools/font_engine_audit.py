@@ -34,7 +34,7 @@ checker's end-to-end run answers by counting the dispatches (.local/rewrites/fon
 
 Production: font_engine_routines*.inc lists each routed entry (FONT_ENGINE_ROUTINE) or draft (FONT_ENGINE_DRAFT) with the digest of
 its original body; the generator hooks exactly the listed entries (FONT_ENGINE_HOOKED). ROUTED in tools/test_font_engine_audit.py pins
-the set; COMPLETE is False until every entry is routed.
+the set; COMPLETE makes the generator refuse anything less than all 263 routed.
 """
 import re
 from pathlib import Path
@@ -230,8 +230,8 @@ def rewritten(path=INCLUDES, drafts=False):
 FONT_ENGINE_ENTRIES = tuple(entry for entry, _ in ROUTINES)
 FONT_ENGINE_HOOKED = tuple(entry for entry, _, _ in rewritten(drafts=True))
 
-# Whether the generator requires every entry routed (FONT_ENGINE_ROUTINE); False until all 263 are.
-COMPLETE = False
+# The generator requires every entry routed (FONT_ENGINE_ROUTINE): all 263 are, and a draft or a missing line stops the generation.
+COMPLETE = True
 
 
 def require_font_engine_index(db, path=INCLUDES, complete=None):

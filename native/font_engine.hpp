@@ -355,4 +355,77 @@ void opcode_measure_point_size(Cpu& c, std::uint32_t ctx);    // 0x10759190 MPS
 void opcode_get_info(Cpu& c, std::uint32_t ctx);              // 0x107591b0 GETINFO
 void opcode_set_auto_flip(Cpu& c, std::uint32_t ctx, std::uint32_t on);  // 0x10759220 FLIPON, 0x10759230 FLIPOFF
 void opcode_debug(Cpu& c, std::uint32_t ctx);                 // 0x10759240 DEBUG
+
+// ---- AUTOGRID.C, second half (0x10753560..0x107559a0, block autogrid_b; font_engine_autogrid_b.cpp; autogrid:: and hint_input:: in the detail header) ----
+// The callbacks the hint strategy (HSTRAT97.C) calls, the hint execution and the hint handle. Arguments are the registers the callers set (the strategy's
+// stack words at the caller's sp + 0x38.. where noted); every routine leaves r3-r10 as the original (the checker compares them in full).
+void reset_bisection(Cpu& c, std::uint32_t handle);                                             // 0x10753a80
+std::uint32_t limit_to_band(Cpu& c, std::uint32_t handle, std::uint32_t index, std::uint32_t value);  // 0x10753cd0
+std::uint32_t hold_if_close(Cpu& c, std::uint32_t old_value, std::uint32_t new_value);          // 0x10753d20 (autogrid_a's callers)
+void take_extreme(Cpu& c, std::uint32_t h, std::uint32_t x, std::uint32_t from, std::uint32_t to, bool maximum);  // 0x10753bf0 (max), 0x10753c30 (min)
+void remove_excess(Cpu& c, std::uint32_t h, std::uint32_t x, std::uint32_t i, std::uint32_t j, std::uint32_t k);  // 0x10753c70
+void round_word(Cpu& c, std::uint32_t h, std::uint32_t enabled, std::uint32_t index, bool x);   // 0x10753f70 (x), 0x10753fa0 (y)
+void round_word_in_band(Cpu& c, std::uint32_t handle, std::uint32_t h, std::uint32_t enabled, std::uint32_t index, std::uint32_t reference, bool x);  // 0x10753fd0, 0x10754050
+void interpolate_word(Cpu& c, std::uint32_t h, std::uint32_t a, std::uint32_t b, std::uint32_t c_index, bool x);  // 0x107540d0, 0x10754130
+void place_edge_x(Cpu& c, std::uint32_t handle, std::uint32_t h, std::uint32_t width_index, std::uint32_t keep_visible);  // 0x10753d70 (i, j at sp+0x38, +0x3c)
+void place_edge_y(Cpu& c, std::uint32_t handle, std::uint32_t h, std::uint32_t width_index, std::uint32_t keep_visible);  // 0x10753e70
+void forward_place_edge(Cpu& c, std::uint32_t entry, std::uint32_t back);                       // 0x10754550, 0x107545b0
+void settle_between_edges(Cpu& c, std::uint32_t handle, std::uint32_t h, std::uint32_t flag, std::uint32_t r7, std::uint32_t r8, std::uint32_t r9);  // 0x107537c0
+void snap_stem_edge(Cpu& c, std::uint32_t handle, std::uint32_t h, std::uint32_t a, std::uint32_t b, std::uint32_t cc, std::uint32_t d);  // 0x10753980
+void bisect_step(Cpu& c, std::uint32_t handle, std::uint32_t h, std::uint32_t x, std::uint32_t reference, std::uint32_t index);  // 0x10753ab0
+void find_standard_width(Cpu& c, std::uint32_t handle, std::uint32_t x_flag, std::uint32_t y_flag, std::uint32_t value);  // 0x10754610
+void widest_stem(Cpu& c, std::uint32_t handle, bool x);                                         // 0x10754810 (x), 0x107548d0 (y)
+void choose_edge(Cpu& c, std::uint32_t handle, std::uint32_t h, std::uint32_t halves, std::uint32_t direction, std::uint32_t r7, std::uint32_t r8,
+                 std::uint32_t r9, std::uint32_t r10);                                          // 0x107536b0 (stack words sp+0x3b, +0x3c, +0x40)
+void interpolate_untouched(Cpu& c, std::uint32_t handle, std::uint32_t h, bool x);              // 0x10754190 (x), 0x10754370 (y)
+void link_contours(Cpu& c, std::uint32_t handle);                                               // 0x10753560
+void build_edge_records(Cpu& c, std::uint32_t handle, std::uint32_t out, std::uint32_t count_out);  // 0x10754990
+void collect_stem_widths(Cpu& c, std::uint32_t handle, std::uint32_t h, std::uint32_t x_array_out, std::uint32_t x_count_out, std::uint32_t y_array_out,
+                         std::uint32_t y_count_out);                                            // 0x10754cd0
+void run_hinter(Cpu& c, std::uint32_t handle, std::uint32_t h, std::uint32_t mode_word, std::uint32_t size_flag, std::uint32_t mode, std::uint32_t r8,
+                std::uint32_t r9, std::uint32_t r10);                                           // 0x10754ff0 (stack word sp+0x38)
+void run_hinter_checked(Cpu& c, std::uint32_t handle, std::uint32_t h, std::uint32_t mode_word, std::uint32_t size_flag, std::uint32_t r7, std::uint32_t r8,
+                        std::uint32_t r9, std::uint32_t r10);                                   // 0x10754f70
+void set_hint_data(Cpu& c, std::uint32_t handle, std::uint32_t data, std::uint32_t flavor);     // 0x107551c0
+void hint_glyph(Cpu& c, std::uint32_t handle, std::uint32_t h, std::uint32_t quality, std::uint32_t r6, std::uint32_t r7, std::uint32_t r8, std::uint32_t r9);  // 0x107552b0
+void new_hint_handle(Cpu& c, std::uint32_t mem, std::uint32_t max_points, std::uint32_t units, std::uint32_t handle_out);  // 0x107555d0
+void delete_hint_handle(Cpu& c, std::uint32_t handle);                                          // 0x10755840
+void set_hint_size(Cpu& c, std::uint32_t handle, std::uint32_t size_x, std::uint32_t size_y, std::uint32_t r6);  // 0x10755930
+
+// ---- AUTOGRID.C, first half (0x10751350..0x10753560, block autogrid_a; font_engine_autogrid_a.cpp; `autogrid::` in the detail header): the height and stem analysis ----
+// `g` is the autogridder's object (the hint handle). r9 and r10 are left as the original does (the callers read them through the chain); r4-r8 are leftovers.
+// 0x10751350: the font's heights and stem widths for the size (`scale` zero keeps font units only); `gray_out` gets a byte; returns 0.
+std::uint32_t scale_hint_heights(Cpu& c, std::uint32_t g, std::uint32_t scale, std::uint32_t gray_out);
+// 0x10751b10: the values of the glyph input's points (count at +2, four phantom points more; output words at +0x1c) from the band each y falls in.
+void band_coordinates(Cpu& c, std::uint32_t g, std::uint32_t input);
+// 0x10751bd0: the code (2i height, 2i+1 overshoot of record i) of the height record nearest to the point, or -1.
+std::int32_t nearest_height(Cpu& c, std::uint32_t g, std::uint32_t point);
+// 0x10751eb0: the vector at the two pointers scaled to length 0x4000.
+void normalize_vector(Cpu& c, std::uint32_t first_pointer, std::uint32_t second_pointer);
+// 0x10751fd0 the directions of every point (to the next, from the previous) and the curve points; 0x107522b0 the extrema; 0x107524b0 the inflections;
+// 0x10752990 the classification of the points; 0x10753110 each edge point's partners.
+void point_directions(Cpu& c, std::uint32_t g);
+void mark_extrema(Cpu& c, std::uint32_t g);
+void mark_inflections(Cpu& c, std::uint32_t g);
+void classify_points(Cpu& c, std::uint32_t g);
+void link_edge_points(Cpu& c, std::uint32_t g);
+
+// ---- GHINTS.C (0x1075ac40..0x1075b970; block ghints): the global hint data, 0x6c bytes at the sfnt's +0x38 ----
+// 0x1075ac40, 0x1075acd0: the highest and the lowest y of a glyph's contours of more than one point (leaves; they leave r4-r10 as the original).
+std::int32_t glyph_highest(Cpu& c, std::uint32_t glyph);
+std::int32_t glyph_lowest(Cpu& c, std::uint32_t glyph);
+// 0x1075ad60: the data read from a T2KG table through the stream (version 0, ten triples, two arrays of twelve halfwords).
+void read_hint_data(Cpu& c, std::uint32_t data, std::uint32_t stream);
+// 0x1075ae30: the median of the tops (or bottoms) of the glyphs of the characters in a zero-terminated list; r3 is the result.
+std::int32_t median_height(Cpu& c, std::uint32_t font, std::uint32_t characters, std::uint32_t top);
+// 0x1075af60 (font, hinter, data, mode): the data measured from the font's own glyphs (the autogridder's analysis 0x10754f70 runs generated).
+void analyse_hint_data(Cpu& c, std::uint32_t font, std::uint32_t hinter, std::uint32_t data, std::uint32_t mode);
+
+// ---- HSTRAT97.C (0x1075c980..0x1075e0c0; block hstrat97): the hint strategy ----
+// 0x1075c980: the sift-down of the strategy's heap sort over record pointers (heap, first, last, key halfwords); leaves r3-r10 as the original.
+void sift_heap(Cpu& c, std::uint32_t heap, std::uint32_t first, std::uint32_t last, std::uint32_t keys);
+// 0x1075ca60: 1 when a fixed-point polynomial of the three clamped arguments is positive (see the .cpp); r3 is the result.
+std::uint32_t strategy_score(Cpu& c, std::uint32_t a, std::uint32_t b, std::uint32_t flags);
+// 0x1075cbc0 (input, handle): the hint strategy: the stems of both axes placed record by record through the autogridder's callbacks; returns 0 (r3).
+void hint_strategy(Cpu& c, std::uint32_t input, std::uint32_t handle);
 }

@@ -101,7 +101,7 @@ struct Options {
     unsigned all = 40, every = 400, mutate = 0, mutated_calls = 4;
     std::uint32_t seed = 1;
     std::set<std::uint32_t> only;
-    bool corrupt = false, null_page = false, cases = true, strict = false, require_all = false, show_faults = false, show_sites = false, call_trace = false, corrupt_trace = false, production = false, end_to_end = false, list_fonts = false, exhaustive = false;
+    bool corrupt = false, null_page = false, cases = true, strict = false, require_all = false, show_faults = false, show_sites = false, call_trace = false, corrupt_trace = false, production = false, end_to_end = false, end_to_end_hinted = false, list_fonts = false, exhaustive = false;
 } options;
 
 struct Tally { std::uint64_t returned = 0, faulted = 0, timed_out = 0, calls = 0; };
@@ -960,6 +960,7 @@ int main(int argc, char** argv) {
             else if (option == "--corrupt-trace") options.call_trace = options.corrupt_trace = true;
             else if (option == "--production") options.production = true;
             else if (option == "--end-to-end") options.end_to_end = true;
+            else if (option == "--end-to-end-hinted") options.end_to_end = options.end_to_end_hinted = true;
             else if (option == "--list-fonts") options.list_fonts = true;
             else if (option == "--font-file") options.font_files.push_back(value());
             else if (option == "--exhaustive") options.exhaustive = true;
@@ -1041,7 +1042,7 @@ int main(int argc, char** argv) {
             if (options.null_page) state->memory.map(0, 0x10000);
             state->code_fragment_observer = &inputs;
             if (std::getenv("CM_FONT_ENGINE_EXHAUSTIVE")) options.exhaustive = true;
-            if (options.end_to_end || options.list_fonts) return run_end_to_end(*state, options.list_fonts, options.exhaustive, options.corrupt, options.font_files) == (options.corrupt ? 1 : 0) ? 0 : 1;
+            if (options.end_to_end || options.list_fonts) return run_end_to_end(*state, options.list_fonts, options.exhaustive, options.corrupt, options.font_files, options.end_to_end_hinted) == (options.corrupt ? 1 : 0) ? 0 : 1;
             if (options.production) status |= production_proof(*state);
             else if (options.cases) {
                 routine_checker = &checker;

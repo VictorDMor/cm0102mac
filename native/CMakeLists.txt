@@ -4754,7 +4754,9 @@ if(EXISTS "${CM_ORACLE_DIR}/program.json" AND EXISTS "${CM_BENCHMARK_DIR}/ui/sav
     # The equivalence gate of the module: the engine over every font file the snapshot holds, original against production routing (about a minute;
     # CM_FONT_ENGINE_EXHAUSTIVE=1 widens it to every style and size, minutes a file: .local/rewrites/font_engine/brief.md).
     add_test(NAME font_engine_end_to_end COMMAND cm-font-engine-checks ${CM_FONT_ENGINE_INPUTS} --end-to-end)
-    set_tests_properties(font_engine_equivalence font_engine_production font_engine_end_to_end PROPERTIES ENVIRONMENT "CM_ENGLISH_RULES_ORIGINAL=1")
+    # The same with the hinter on (the game never asks for it): renders every second mapped glyph through the grid-fitting commands, about a minute; exhaustive behind CM_FONT_ENGINE_EXHAUSTIVE=1.
+    add_test(NAME font_engine_end_to_end_hinted COMMAND cm-font-engine-checks ${CM_FONT_ENGINE_INPUTS} --end-to-end-hinted)
+    set_tests_properties(font_engine_equivalence font_engine_production font_engine_end_to_end font_engine_end_to_end_hinted PROPERTIES ENVIRONMENT "CM_ENGLISH_RULES_ORIGINAL=1")
 endif()
 option(CM_FONT_ENGINE_COVERAGE "Instrument the font engine checker only" OFF)
 if(CM_FONT_ENGINE_COVERAGE)

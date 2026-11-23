@@ -16,3 +16,7 @@
 #include "font_engine_routines_fnt_a.inc"
 #include "font_engine_routines_t2k_core.inc"
 #include "font_engine_routines_fnt_b.inc"
+#include "font_engine_routines_autogrid_b.inc"
+#include "font_engine_routines_autogrid_a.inc"
+#include "font_engine_routines_ghints.inc"
+#include "font_engine_routines_hstrat97.inc"
