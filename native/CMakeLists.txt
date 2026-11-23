@@ -4840,6 +4840,40 @@ if(CM_GRAPH_CARBON_COVERAGE)
     target_link_options(cm-graph-carbon-checks PRIVATE "-fprofile-instr-generate=${CM_GRAPH_CARBON_PROFILE}" -fsanitize=undefined)
 endif()
 
+# The assertion helpers (tools/assertion_audit.py): the file-name splitter 0x10739890 and the C assertion reporter 0x107755c0, rewritten as
+# handwritten C++ (both routed). assertion_argument_masks.txt lists the argument registers each callee reads (tools/call_arguments.py), so the
+# call trace compares them at every call. The inputs are the UI state of a running game (the save-info capture).
+file(GLOB CM_ASSERTION_SOURCES CONFIGURE_DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/assertion*.cpp")
+list(FILTER CM_ASSERTION_SOURCES EXCLUDE REGEX "_checks(_[a-z0-9_]+)?\\.cpp$")
+target_sources(cm_aot PRIVATE ${CM_ASSERTION_SOURCES})
+file(GLOB CM_ASSERTION_CHECK_SOURCES CONFIGURE_DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/assertion_checks*.cpp")
+add_executable(cm-assertion-checks ${CM_ASSERTION_CHECK_SOURCES})
+target_link_libraries(cm-assertion-checks PRIVATE cm_aot)
+target_compile_options(cm-assertion-checks PRIVATE -Wall -Wextra -Werror -Wpedantic -ffp-contract=off)
+if(EXISTS "${CM_ORACLE_DIR}/program.json")
+    add_test(NAME assertion_audit COMMAND "${Python3_EXECUTABLE}" "${CMAKE_SOURCE_DIR}/../tools/test_assertion_audit.py")
+endif()
+if(EXISTS "${CM_ORACLE_DIR}/program.json" AND EXISTS "${CM_BENCHMARK_DIR}/ui/save-info/initial.snapshot")
+    set(CM_ASSERTION_INPUTS --world "${CM_BENCHMARK_DIR}/ui/save-info/initial.snapshot")
+    add_test(NAME assertion_equivalence COMMAND cm-assertion-checks ${CM_ASSERTION_INPUTS} --mutate 4 --call-trace
+             --argument-masks "${CMAKE_CURRENT_SOURCE_DIR}/assertion_argument_masks.txt" --require-all)
+    add_test(NAME assertion_production COMMAND cm-assertion-checks ${CM_ASSERTION_INPUTS} --production --require-all)
+    set_tests_properties(assertion_equivalence assertion_production PROPERTIES ENVIRONMENT "CM_ENGLISH_RULES_ORIGINAL=1")
+endif()
+option(CM_ASSERTION_COVERAGE "Instrument the assertion module checker only" OFF)
+if(CM_ASSERTION_COVERAGE)
+    file(MAKE_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}/assertion-coverage")
+    set(CM_ASSERTION_PROFILE "${CMAKE_CURRENT_BINARY_DIR}/assertion-coverage/check-%m.profraw")
+    add_library(cm_assertion_coverage OBJECT ${CM_ASSERTION_SOURCES})
+    target_link_libraries(cm_assertion_coverage PRIVATE cm_aot)
+    target_compile_options(cm_assertion_coverage PRIVATE "-fprofile-instr-generate=${CM_ASSERTION_PROFILE}" -fcoverage-mapping -ffp-contract=off
+        -fsanitize=signed-integer-overflow,shift,integer-divide-by-zero,float-cast-overflow)
+    target_compile_definitions(cm_assertion_coverage PRIVATE CM_ASSERTION_COVERAGE=1)
+    target_sources(cm-assertion-checks PRIVATE $<TARGET_OBJECTS:cm_assertion_coverage>)
+    target_compile_definitions(cm-assertion-checks PRIVATE CM_ASSERTION_COVERAGE=1)
+    target_link_options(cm-assertion-checks PRIVATE "-fprofile-instr-generate=${CM_ASSERTION_PROFILE}" -fsanitize=undefined)
+endif()
+
 # DISPLAY.CPP (tools/display_audit.py): the display table, its controls, input, drawing and network form.
 file(GLOB CM_DISPLAY_SOURCES CONFIGURE_DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/display_*.cpp")
 list(FILTER CM_DISPLAY_SOURCES EXCLUDE REGEX "_checks(_[a-z0-9_]+)?\\.cpp$")

@@ -3029,3 +3029,21 @@ private copy of the shared library found 102 changes (the 16 not found are equiv
 - The checker scripts Toolbox imports by name (`Case::imports`) with a per-call log of arguments, return address and held registers.
   It links `libcm_aot_shared.dylib` by rpath: a copied checker binary still loads the build directory's library.
 - No capture reaches the font file routines or the loader (they run at startup); their evidence is the checker's cases.
+
+## The assertion helpers: the file-name splitter and the C assertion reporter (tools/assertion_audit.py)
+
+Two routines that no audited module owned: 0x10739890 (170 instructions) splits a Mac path at its last ':' into volume, directory, name and
+extension (CodeWarrior's splitter; its callees are strlen and strcpy, its frame holds four 256-byte buffers that start as copies of four
+bss statics, TOC -0x3e78..-0x3e84) and is the first call of every assertion site (6,486 `bl`s, 6,428 followed by the version getter
+0x10768810); 0x107755c0 (15 instructions) is the C library's reporter (fprintf of "Assertion (%s) failed in "%s" on line %d\n" to the
+error stream, then abort; 136 callers: the font engine, FONT.CPP, POL_CUP, QSORT4X). Neither lies in UTILS.CPP, graph_carbon.cpp,
+string_core or stdlib_core (the audit's docstring and `tools/test_assertion_audit.py` give the evidence), so they are a small module of
+their own: `native/assertion.cpp`, the adapter, `assertion_routines.inc`, the checker `cm-assertion-checks` (cases `split`, `report`).
+- The original's frames are built exactly (`guest::Frame`) and every callee is called with `c.call` at the original's return address with
+  the registers the original holds there. 0x10739890's whole 0x460-byte frame is read as leftovers by MAIN's printf, the stream routines
+  0x10776940 / 0x10776a40 and the import area (tools/stack_contract.py module MAIN.CPP), so both routines are compared on the dead stack
+  (`assertion_stack_exact.inc`). The splitter's loops write r4-r7 as the original's do and the directory buffer is never terminated by
+  the loop: its terminator is its static copy's.
+- The checker compares r13-r31 at every paired call too (the trace of the graph_carbon checker does not under the native contract).
+- fprintf of the reporter runs for real on both sides (the original's page calls its owner in place); abort is answered.
+- A volume of 304 or more bytes smashes the saved link register: the original then returns into the text, which no run can compare.
