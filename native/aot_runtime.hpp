@@ -142,18 +142,21 @@ struct MemoryObserver {
     virtual void read(std::uint32_t, const std::uint8_t*, unsigned) {}
     // General diagnostics observe every write by default. A passive observer
     // may declare a conservative interval to avoid irrelevant scalar calls.
+    // One unsigned compare, cheap enough for the inline store path: the store [address, address + size) meets
+    // [begin, begin + span) when address + size - 1 - begin < span + size - 1 (the span is at least 1 and at most 2^63 - 1, so
+    // neither side wraps for a guest address; a store of no bytes meets it strictly inside). Unrestricted is the whole space.
     bool observes_write(std::uint64_t address, unsigned size) const {
-        return !restricted_writes_ || (address < write_end_ && address + size > write_begin_);
+        return address + size - 1 - write_begin_ < write_span_ + size - 1;
     }
 protected:
     void restrict_write_notifications(std::uint64_t begin, std::uint64_t end) {
-        write_begin_ = begin;
-        write_end_ = end;
-        restricted_writes_ = true;
+        // An empty or inverted interval stays unrestricted: the observer is told more than it asked for, never less.
+        const bool proper = begin < end;
+        write_begin_ = proper ? begin : 0;
+        write_span_ = proper ? std::min(end - begin, ~std::uint64_t{0} >> 1) : ~std::uint64_t{0} >> 1;
     }
 private:
-    std::uint64_t write_begin_ = 0, write_end_ = 0;
-    bool restricted_writes_ = false;
+    std::uint64_t write_begin_ = 0, write_span_ = ~std::uint64_t{0} >> 1;
 };
 class Memory {
 public:
@@ -211,7 +214,9 @@ public:
     template <unsigned N> [[gnu::always_inline]] void write(std::uint64_t address, std::uint64_t value) {
         if (exact_bounds_) check_scalar<N>(address);
         write_be<N>(data_ + address, value);
-        if (observer || date_observer) [[unlikely]] report_write(address, N);
+        // The interval test is inline: a passive observer of a small interval (the host's drawing surfaces) is
+        // installed for the whole session, and a call on every store of the simulation cost a tenth of its time.
+        if (date_observer || (observer && observer->observes_write(address, N))) [[unlikely]] report_write(address, N);
     }
     // Whether a store of `size` bytes at `address` reaches an observer.
     bool write_observed(std::uint64_t address, unsigned size) const {
