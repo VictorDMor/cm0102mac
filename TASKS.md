@@ -23,14 +23,15 @@ Every finished module still reaches the same generated code through the game's a
 - [x] Font engine: delivered 2026-11-23, 263 of 263 routines in production (`tools/font_engine_audit.py`, `COMPLETE`; brief `.local/rewrites/font_engine/brief.md`). Open, none blocking:
   - `font_engine_equivalence` takes about 20 minutes: move sweeps behind `CM_FONT_ENGINE_EXHAUSTIVE`.
   - `tools/register_contract.py --after` follows registers only to the direct caller's return and treats every `bl` as writing r4-r10: twenty exemptions fell in review. Fix the tool or stop using it for exemptions.
-  - The r4-r8 exemption of 0x10755930 holds if the callback FONT.CPP calls at 0x1074f9d0 reads at most six arguments: settle it when FONT.CPP is rewritten.
+  - Settled 2026-11-23: the callback FONT.CPP calls at 0x1074f9d0 is 0 or 0x1076ca20, which reads r3 only, so the r4-r8 exemption of 0x10755930 stands (pinned in tools/test_font_cpp_audit.py).
   - Dead stack under non-leaver callees (the byte move in 0x10754990, the allocator in the hint handle's constructor and 0x10754cd0) holds the caller's registers, not the original's: free under the per-reader contract, no reader known.
   - A case that enters an inner routine directly runs with the jump buffer an earlier API call left: a mutated run that raises resumes on a dead frame. The direct renderer cases poison the buffer; do the same where it shows up.
   - Unreproduced: one t2ktt_head run showed a leaver-log difference (byte 0x600e0023, original 0x88, rewrite 0x8c) while other agents were rebuilding the checker; later runs were clean.
   - The call trace pairs only the first 32 cases of an entry: rare-site cases must come first, or lift the limit.
   - The fixed-point helpers carry r4-r8 through each call for generated callers (`Leftovers`); drop that once every caller is C++.
   - `tools/game_inventory.py` turns a `MODULES` key into `<KEY>.CPP`: its next report will show AUTOGRID.CPP beside AUTOGRID.C.
-- [ ] graph_carbon.cpp (33 routines, 3,883) and FONT.CPP (19 routines, 2,217), with the assertion path's own routines.
+- [ ] FONT.CPP (`tools/font_cpp_audit.py`; brief `.local/rewrites/font_cpp/brief.md`): inventory closed at 19 routines, 2,217 instructions (0x1074f170..0x10751348 plus the resource-file helpers 0x1074d380 and 0x1074d450). In production: 5 of 19 (`fontlist`, 2026-11-23). No capture dispatches the pilot's entries (pairs give SAME): checker and production proof only. Left: fontfiles (599), record (350), selector (152), glyphs (350), drawer (570); four are stack leavers (0x1074f800, 0x107500f0, 0x10750320, 0x10750580).
+- [ ] graph_carbon.cpp (33 routines, 3,883), with the assertion path's own routines.
 - [ ] LANGLIB.CPP's five generated routines (16,460 instructions: look for tables compiled as code, as in COMP_UTIL.CPP).
 - [ ] The 44 unattributed routines (2,750) and the single routines of other modules in the closure: find why the closure reaches them.
 - Other candidates by weight, from `.local/inventory/2026-11-22/report.md`: GAME.CPP (27 routines, 38,933 instructions, 195 of the day's 335 generated samples; needs Victor's go-ahead for the cost), MENUBAR.CPP 9,939, VIRTUAL_STAFF.CPP 2,378, TRAINING_MANAGER.CPP 6,282, KEY_NATION.CPP 3,276, WEATHER.CPP 3,246.
