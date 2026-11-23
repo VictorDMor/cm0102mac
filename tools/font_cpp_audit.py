@@ -126,8 +126,8 @@ def rewritten(path=INCLUDES, drafts=False):
 FONT_CPP_ENTRIES = tuple(entry for entry, _ in ROUTINES)
 FONT_CPP_HOOKED = tuple(entry for entry, _, _ in rewritten(drafts=True))
 
-# The generator requires every entry routed (FONT_CPP_ROUTINE) once the module is complete; until then a block at a time.
-COMPLETE = False
+# The generator requires every entry routed (FONT_CPP_ROUTINE): all 19 are.
+COMPLETE = True
 
 
 def require_font_cpp_index(db, path=INCLUDES, complete=None):

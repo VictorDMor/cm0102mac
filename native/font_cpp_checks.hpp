@@ -55,7 +55,7 @@ struct Case {
     // and the other stream I/O entries, the allocator's entries that generated pages call in place): an answer
     // or nth answer for one reaches the rewrite only. Listed here, the owner runs its original body for this
     // case alone, which is dispatched on both sides, so the answers apply alike (stream_io_entries,
-    // allocator_entries; any other entry is an error). The switch is undone after the case: never set
+    // allocator_entries, cpp_object_storage_entries (new, delete, malloc, free of 0x107735..); any other entry is an error). The switch is undone after the case: never set
     // State::stream_io_entry_original or allocator_entry_original from a case list, which would leak into
     // every other block's cases.
     std::vector<std::uint32_t> original_owners = {};
@@ -69,6 +69,11 @@ struct Case {
     std::function<void(State&)> prepare = nullptr;
     // Start with FPSCR cleared (the snapshot's has the sticky inexact bit set, which hides a missing inexact result).
     bool clear_fpscr = false;
+    // Answers for imports (Toolbox calls a snapshot has no host for: the Resource Manager, the Memory Manager, FSMakeFSSpec), by the import's
+    // name ("CarbonLib::CurResFile"), given on both sides at the import itself, which the generated code and the C++'s dispatched calls both
+    // reach: the `nth` call (from 1; 0 for every call) of the import in a run sets r3 to `r3`, applies `writes` and returns.
+    struct Import { const char* name; unsigned nth; std::uint32_t r3; std::vector<Write> writes = {}; };
+    std::vector<Import> imports = {};
 };
 struct Scenario {
     State& s;

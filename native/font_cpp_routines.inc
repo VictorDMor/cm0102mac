@@ -3,3 +3,8 @@
 // hooks read the guest ABI's arguments and set r3.
 // Each block appends the #include of its font_cpp_routines_<block>.inc below.
 #include "font_cpp_routines_fontlist.inc"
+#include "font_cpp_routines_fontfiles.inc"
+#include "font_cpp_routines_record.inc"
+#include "font_cpp_routines_selector.inc"
+#include "font_cpp_routines_glyphs.inc"
+#include "font_cpp_routines_drawer.inc"

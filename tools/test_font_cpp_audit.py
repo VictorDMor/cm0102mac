@@ -48,6 +48,13 @@ ENTRIES = tuple(a for a, _, _, _ in CONTRACTS)
 # The routed entries: block fontlist (the font list's five entries: the directory finder, the lazy initialisation wrappers, the
 # count, the selection setter and the name getter).
 ROUTED = frozenset({0x10750a00, 0x10750a60, 0x10750b00, 0x10750b60, 0x10750ca0})
+# Blocks selector (the style selector) and glyphs (the glyph cache and the string width).
+ROUTED = ROUTED | frozenset({0x10750320, 0x10750580, 0x107500f0})
+# Block drawer (the text drawer).
+ROUTED = ROUTED | frozenset({0x1074f800})
+# Blocks fontfiles (the resource file helpers, the font data finder and file opener, the name reader, the list builder) and record (the font record's
+# constructor and destructor, its release and the loader).
+ROUTED = ROUTED | frozenset({0x1074d380, 0x1074d450, 0x1074f170, 0x1074f2c0, 0x10750d30, 0x10750f00, 0x1074f390, 0x1074f410, 0x10750200, 0x1074f470})
 ASSEMBLY_TARGET = re.compile(r'^(b|bl|b[a-z]+) (0x[0-9a-f]+)$')
 SLOT = re.compile(r'^lwz r\d+,(-?0x[0-9a-f]+)\(r2\)$')
 REGISTER = re.compile(r'\br(\d+)\b')
@@ -252,7 +259,7 @@ class FontCppAuditTests(unittest.TestCase):
     def test_exactly_the_routed_blocks_are_routed_and_hooked_and_the_hook_checks_fail_when_they_should(self):
         from compile_recomp import OWNER_REPLACEMENTS, SEMANTIC_REPLACEMENTS, generate_page
         pinned = {a: (b, d) for a, b, _, d in CONTRACTS}
-        self.assertFalse(audit.COMPLETE)
+        self.assertTrue(audit.COMPLETE)
         listed = audit.rewritten(drafts=True)
         for entry, end, expected in listed:
             self.assertEqual(pinned[entry], (end, expected))

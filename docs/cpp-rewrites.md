@@ -3014,3 +3014,18 @@ private copy of the shared library found 102 changes (the 16 not found are equiv
   game (FONT.CPP passes hint = 0): the cases and the hinted end to end are the evidence (35 of the 37 entries are reached by it; each is sensitive to a source control there
   except the two `widest_stem` callbacks, whose result nothing reads). Registers: callbacks and leaves compared in full, the five entries that call other blocks' routines on
   r3, r9, r10. Cases' `answers` cannot stand in for a routine another block has routed (the original run declines the hook): the cases run those callees for real.
+
+## FONT.CPP: the game's layer over the font engine (tools/font_cpp_audit.py)
+
+19 routines, 2,217 instructions: 0x1074f170..0x10751348 and the Toolbox resource-file constructor and destructor 0x1074d380 and
+0x1074d450 (attributed by their only caller, 0x1074f170). Blocks: fontlist, fontfiles, record, selector, glyphs, drawer.
+
+- Four routines are stack leavers (0x1074f800 the text drawer, 0x107500f0 the string width, 0x10750320 the style selector, 0x10750580
+  the glyph cache): they build the original's frames, and `font_cpp_stack_exact.inc` lists the entries whose dead stack is compared.
+  The drawer holds r14-r20 as the original does at its calls: the engine's setjmp saves them into game memory.
+- The drawer's ninth argument (caller sp + 0x38) is a callback descriptor: 0 or 0x108bdaac (code 0x1076ca20, which reads r3 only).
+- The module calls the engine with `c.call`, not through `font_engine.hpp`: the checker's original side runs the engine generated,
+  and the typed engine leaves r4-r8 differently (dead by the engine's contract), which a comparison of r3-r10 in full sees.
+- The checker scripts Toolbox imports by name (`Case::imports`) with a per-call log of arguments, return address and held registers.
+  It links `libcm_aot_shared.dylib` by rpath: a copied checker binary still loads the build directory's library.
+- No capture reaches the font file routines or the loader (they run at startup); their evidence is the checker's cases.

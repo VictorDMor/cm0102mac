@@ -20,6 +20,7 @@
 #include "match_turbo.hpp"
 #include "routine_check.hpp"
 #include "allocator_adapter.hpp"
+#include "cpp_object_storage_adapter.hpp"
 #include "stream_io_adapter.hpp"
 #include <sys/mman.h>
 #include <sys/wait.h>
@@ -107,10 +108,42 @@ std::map<std::uint32_t, Tally> case_tally, mutated_tally;
 std::map<std::uint32_t, std::uint64_t> observed_calls;
 unsigned clocks = 0;
 
+// A case's scripted imports (Case::imports) and the calls each import has had in this run (every compared run is a fresh child).
+const std::vector<Case::Import>* case_imports = nullptr;
+std::map<std::string, unsigned> import_calls;
+unsigned import_log_count = 0;
+constexpr std::uint32_t imports_log = scratch_base + 0x80000;
 struct Inputs final : CodeFragmentBoundaryObserver {
     void enter(const State&, std::uint32_t, bool) override {}
     void leave(State&, std::uint32_t, bool) override {}
     bool import_fixture(State& s, const char* name) override {
+        if (case_imports && !case_imports->empty()) {  // only a case that scripts imports: the log would otherwise show the registers of every other block's cases
+            const auto calls = ++import_calls[name];
+            // Each import call is logged in guest memory, where the comparison of both sides sees it (nothing else shows what the glue was
+            // given: it is not dispatched, so the call trace does not see it): the name's hash, r3-r10, the link register (the return address
+            // of the `bl`) and r13-r31, 0x80 bytes a call from imports_log, at most 1000 calls.
+            const auto index = import_log_count++;
+            if (index < 1000) {
+                const auto at = imports_log + index * 0x80;
+                std::uint32_t hash = 2166136261u;
+                for (const char* ch = name; *ch; ++ch) hash = (hash ^ std::uint8_t(*ch)) * 16777619u;
+                s.memory.write<4>(at, hash);
+                for (unsigned n = 3; n <= 10; ++n) s.memory.write<4>(at + 4 * (n - 2), std::uint32_t(s.r<4>(guest::reg::gpr(n))));
+                s.memory.write<4>(at + 0x24, std::uint32_t(s.r<4>(4128)));
+                for (unsigned n = 13; n < 32; ++n) s.memory.write<4>(at + 0x28 + 4 * (n - 13), std::uint32_t(s.r<4>(guest::reg::gpr(n))));
+            }
+            for (const auto& item : *case_imports)
+                if (std::string_view(item.name) == name && (item.nth == 0 || item.nth == calls)) {
+                    for (const auto& write : item.writes) {
+                        if (write.size == 1) s.memory.write<1>(write.address, write.value & 0xff);
+                        else if (write.size == 2) s.memory.write<2>(write.address, write.value & 0xffff);
+                        else s.memory.write<4>(write.address, write.value);
+                    }
+                    s.wr<4>(12, item.r3);
+                    s.pc = s.r<4>(4128);
+                    return true;
+                }
+        }
         if (std::string_view(name) != "CarbonLib::Microseconds") return false;
         s.memory.write<8>(s.r<4>(12), 1000000000ULL + 1000000ULL * ++clocks);
         s.pc = s.r<4>(4128);
@@ -826,17 +859,21 @@ struct OriginalOwners {
     State& s;
     const decltype(State::stream_io_entry_original) streams;
     const decltype(State::allocator_entry_original) allocator;
+    const decltype(State::cpp_object_storage_entry_original) storage;
     OriginalOwners(State& state, const std::vector<std::uint32_t>& entries)
-        : s(state), streams(state.stream_io_entry_original), allocator(state.allocator_entry_original) {
+        : s(state), streams(state.stream_io_entry_original), allocator(state.allocator_entry_original),
+          storage(state.cpp_object_storage_entry_original) {
         for (const auto entry : entries) {
             if (const auto at = std::ranges::find(stream_io_entries, entry); at != stream_io_entries.end())
                 s.stream_io_entry_original[std::size_t(at - stream_io_entries.begin())] = true;
             else if (const auto in = std::ranges::find(allocator_entries, entry); in != allocator_entries.end())
                 s.allocator_entry_original[std::size_t(in - allocator_entries.begin())] = true;
+            else if (const auto on = std::ranges::find(cpp_object_storage_entries, entry); on != cpp_object_storage_entries.end())
+                s.cpp_object_storage_entry_original[std::size_t(on - cpp_object_storage_entries.begin())] = true;
             else throw std::runtime_error("Case::original_owners: no original switch for " + hex_address(entry));
         }
     }
-    ~OriginalOwners() { s.stream_io_entry_original = streams; s.allocator_entry_original = allocator; }
+    ~OriginalOwners() { s.stream_io_entry_original = streams; s.allocator_entry_original = allocator; s.cpp_object_storage_entry_original = storage; }
     OriginalOwners(const OriginalOwners&) = delete;
     OriginalOwners& operator=(const OriginalOwners&) = delete;
 };
@@ -890,8 +927,12 @@ void run_cases(State& s, std::mt19937& random) {
         case_pokes = &item.pokes;
         case_captures = &item.captures;
         case_nth_answers = &item.nth_answers;
+        case_imports = &item.imports;
         case_verify = &item.verify;
         case_prepare = &item.prepare;
+        // CM_FONT_CPP_TRACE_FIRST: the call trace (with CM_FONT_CPP_TRACE_DUMP the calls of each side) before the comparison, which stops the run at
+        // the first difference: to see where two sides part.
+        if (options.call_trace && std::getenv("CM_FONT_CPP_TRACE_FIRST")) compare_traces(s, item.entry);
         const auto outcome = compare_call(s, item.entry, results_of(item.entry), options.strict);
         auto& tally = case_tally[item.entry];
         ++tally.calls; tally.returned += outcome.returned; tally.faulted += outcome.faulted; tally.timed_out += outcome.timed_out;
@@ -910,6 +951,7 @@ void run_cases(State& s, std::mt19937& random) {
         case_pokes = nullptr;
         case_captures = nullptr;
         case_nth_answers = nullptr;
+        case_imports = nullptr;
         case_verify = nullptr;
         case_prepare = nullptr;
     }
