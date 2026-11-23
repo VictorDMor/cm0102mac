@@ -33,7 +33,13 @@ void prepare(State& s, unsigned index, Path path) {
 std::string execute(State& s, unsigned index, Path path) {
     try {
         if (path == Path::adapter) require(try_modern_stdlib_core(s, entries[index]), "Missing direct stdlib adapter");
-        else run_until(s, caller);
+        else if (path == Path::generated && is_leaf_entry(entries[index])) {
+            // abs and labs are leaves: run_until runs them through run_leaf without their hook (the owner's counters
+            // miss those calls by design; INLINE_OWNER_MODULES). The dispatcher's page entry, which an indirect call
+            // reaches, still runs the hook: enter it as dispatch_until does.
+            require(dispatch_page(s), "Missing page for a stdlib leaf entry");
+            if (s.pc != caller) run_until(s, caller);
+        } else run_until(s, caller);
     } catch (const std::runtime_error& error) { return error.what(); }
     return {};
 }
@@ -65,7 +71,15 @@ void compare(unsigned index, const State& initial, Path path, bool turbo, Mode m
     require(x.effects.bytes == y.effects.bytes && old_callback.arguments == new_callback.arguments &&
         old_callback.boundaries == new_callback.boundaries, label + " ordered accesses and import boundaries");
     require(!b->stdlib_core_original_body && !b->stdlib_core_dispatch_escapes, label + " original guard resets and no dispatch escape");
-    if (ax.empty() || ax == "Native instruction budget exhausted" || index < 3)
+    // The page charges a straight-line run when it starts (block accounting, docs/aot-port.md): a zero divisor stops the
+    // original inside the run that starts at the divw 0x10775588 (divw .. beqlr, charge(7) after its step), after its eight
+    // instructions are counted. The C++ stops after the divw's own step, so the original is exactly seven ahead.
+    constexpr std::uint32_t divw = 0x10775588;  // not compared with a pc: a literal pc comparison makes the generator split runs there
+    if (index == 2 && ax == "Signed division by zero in translated code")
+        require(a->executed == b->executed + 7 && std::uint32_t(a->pc) == std::uint32_t(b->pc) && std::uint32_t(b->pc) == divw,
+            label + " division fault: the original's run charge is seven ahead, original=" + std::to_string(a->executed) +
+            " semantic=" + std::to_string(b->executed));
+    else if (ax.empty() || ax == "Native instruction budget exhausted" || index < 3)
         require(a->executed == b->executed, label + " exact successful/budget instruction accounting");
     const bool modern = total(b->stdlib_core_calls) != 0;
     const bool resumed = total(b->stdlib_core_budget_resumes) != 0;
