@@ -110,6 +110,7 @@ unsigned clocks = 0;
 
 // A case's scripted imports (Case::imports) and the calls each import has had in this run (every compared run is a fresh child).
 const std::vector<Case::Import>* case_imports = nullptr;
+bool case_real_dialog = false;  // Case::real_dialog
 std::map<std::string, unsigned> import_calls;
 unsigned import_log_count = 0;
 constexpr std::uint32_t imports_log = scratch_base + 0x80000;
@@ -217,7 +218,50 @@ void record_original(State& s, std::uint32_t entry) { record_leaver(s, entry, tr
 // A case that answers a leaver: neither side runs its body, so the entry is recorded where the answer is given (the same entry state).
 void record_answered(State& s) { record_leaver(s, s.pc, graph_carbon_declining); }
 }
+// ---- The native drawing boundary log: the observation points of tools/native_drawing_audit.py that a run passes (the generated pages' at the
+// observed entries, the C++'s own at the interior exits and at its typed calls into an observed entry). The host's drawing view reads the
+// arguments at the entries and pairs each entry with its exit, so both sides must pass the same points in the same order with the same
+// r3-r8. The checked entry's own observation is the generated page's, before its hook: only the original's run passes it, so it is left out.
+// The log is in the scratch area (count, an FNV hash of every event, the first events), where the memory comparison sees a difference.
+namespace {
+constexpr std::uint32_t boundary_log = scratch_base + 0xd0000, boundary_stride = 32, boundary_capacity = 400;
+std::uint32_t boundary_entry = 0;
+bool boundary_first = true;
+void record_boundary(State& s, std::uint32_t pc) {
+    if (boundary_first) {
+        boundary_first = false;
+        if (graph_carbon_declining && pc == boundary_entry) return;
+    }
+    std::vector<std::uint32_t> words{pc};
+    if (pc == 0x107696cc || pc == 0x107697b0) {
+        // The fade 0x10769460 (block remap): at each frame the observer reads the stack pointer, r26 (the capture), r28 (the frame index), r30 (|steps|)
+        // and the rectangle at sp + 0x44; at its `blr` only the pairing with the entry matters (the stack pointer is logged).
+        for (const unsigned n : {1u, 26u, 28u, 30u}) words.push_back(std::uint32_t(s.r<4>(guest::reg::gpr(n))));
+        if (pc == 0x107696cc) {
+            const auto sp = std::uint32_t(s.r<4>(guest::reg::gpr(1)));
+            words.push_back(std::uint32_t(s.memory.read<4>(sp + 0x44)));
+            words.push_back(std::uint32_t(s.memory.read<4>(sp + 0x48)));
+        }
+    } else {
+        for (unsigned n = 3; n <= 8; ++n) words.push_back(std::uint32_t(s.r<4>(guest::reg::gpr(n))));
+    }
+    const auto count = std::uint32_t(s.memory.read<4>(boundary_log));
+    auto hash = std::uint32_t(s.memory.read<4>(boundary_log + 4));
+    if (!count) hash = 2166136261u;
+    for (const auto word : words) hash = (hash ^ word) * 16777619u;
+    if (std::getenv("CM_GRAPH_CARBON_BOUNDARY_LOG")) {
+        std::fprintf(stderr, "BOUNDARY %s %u:", graph_carbon_declining ? "original" : "rewrite", count);
+        for (const auto word : words) std::fprintf(stderr, " %x", word);
+        std::fprintf(stderr, "\n");
+    }
+    if (count < boundary_capacity)
+        for (std::size_t n = 0; n < words.size(); ++n) s.memory.write<4>(boundary_log + 8 + count * boundary_stride + 4 * std::uint32_t(n), words[n]);
+    s.memory.write<4>(boundary_log, count + 1);
+    s.memory.write<4>(boundary_log + 4, hash);
+}
+}
 namespace cm::aot { extern void (*graph_carbon_leaver_probe)(State&, std::uint32_t); extern void (*native_scope_probe)(State&, std::uint32_t); }
+namespace cm::aot { extern void (*native_drawing_boundary_probe)(State&, std::uint32_t); }
 namespace cm::aot::graph_carbon_checks {
 // A run's start (the checked entry's stack pointer): the check's origin. Also called by the end-to-end sweeps.
 void install_leaver_check(State& s) {
@@ -226,6 +270,8 @@ void install_leaver_check(State& s) {
     last_leaver_executed = ~std::uint64_t(0);
     graph_carbon_leaver_probe = record_original;
     native_scope_probe = record_scope;
+    boundary_first = true;
+    native_drawing_boundary_probe = record_boundary;
 }
 }
 namespace {
@@ -249,6 +295,7 @@ void prepare_case(State& s) {
 }
 void bounded_original(State& s, std::uint32_t entry) {
     prepare_case(s);
+    boundary_entry = entry;
     graph_carbon_checks::install_leaver_check(s);
     alarm(run_alarm); s.budget = s.executed + 4'000'000'000ULL; graph_carbon_run_original(s, entry);
     verify_run(s, "original");
@@ -256,6 +303,7 @@ void bounded_original(State& s, std::uint32_t entry) {
 }
 void bounded_rewrite(State& s, std::uint32_t entry) {
     prepare_case(s);
+    boundary_entry = entry;
     graph_carbon_checks::install_leaver_check(s);
     alarm(run_alarm);
     s.budget = s.executed + 4'000'000'000ULL;
@@ -929,6 +977,7 @@ void run_cases(State& s, std::mt19937& random) {
         case_captures = &item.captures;
         case_nth_answers = &item.nth_answers;
         case_imports = &item.imports;
+        case_real_dialog = item.real_dialog;
         case_verify = &item.verify;
         case_prepare = &item.prepare;
         // CM_GRAPH_CARBON_TRACE_FIRST: the call trace (with CM_GRAPH_CARBON_TRACE_DUMP the calls of each side) before the comparison, which stops the run at
@@ -953,6 +1002,7 @@ void run_cases(State& s, std::mt19937& random) {
         case_captures = nullptr;
         case_nth_answers = nullptr;
         case_imports = nullptr;
+        case_real_dialog = false;
         case_verify = nullptr;
         case_prepare = nullptr;
     }
@@ -1062,7 +1112,7 @@ int main(int argc, char** argv) {
                     return true;
                 }
             // The message box of the assertions needs a host: answered while its routine is not part of the module's C++.
-            if (target.pc != dialog_entry || graph_carbon_lists(dialog_entry)) return false;
+            if (target.pc != dialog_entry || graph_carbon_lists(dialog_entry) || case_real_dialog) return false;
             target.pc = target.r<4>(4128);
             return true;
         };

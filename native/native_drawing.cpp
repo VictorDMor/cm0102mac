@@ -501,5 +501,10 @@ void NativeDrawingObserver::boundary(State& s, std::uint32_t pc) {
         impl_->captures.push_back({pc == 0x1076a140 ? 0x1076a570u : pc == 0x1076ad50 ? 0x1076b014u : 0x1076a784u, surface->address});
     }
 }
-void native_drawing_boundary(State& s, std::uint32_t pc) { if (s.platform) s.platform->observe_drawing(s, pc); }
+// A check tool's view of every boundary the generated pages and the C++ routines pass (graph_carbon_checks.cpp): null in the app.
+void (*native_drawing_boundary_probe)(State&, std::uint32_t pc) = nullptr;
+void native_drawing_boundary(State& s, std::uint32_t pc) {
+    if (native_drawing_boundary_probe) [[unlikely]] native_drawing_boundary_probe(s, pc);
+    if (s.platform) s.platform->observe_drawing(s, pc);
+}
 }

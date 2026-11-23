@@ -1,0 +1,17 @@
+// graph_carbon.cpp, block `surface` (graph_carbon_surface.cpp): the surface, the window and the cursors. Every entry is compared on r3 and
+// r4-r10 in full (the C++ sets what the original sets and leaves the rest as the caller or the last callee had them).
+GRAPH_CARBON_ROUTINE(0x10768820, 0x10768990, R3, "61c96a73c17b0c4c", [](Cpu& c) { graph_carbon::start_graphics(c, c.r(3), c.r(4), c.r(5), c.r(6), c.r(7), c.r(8)); })
+GRAPH_CARBON_ROUTINE(0x10768990, 0x107689dc, R3, "44ebb83e38ded294", [](Cpu& c) { graph_carbon::close_graphics(c); })
+GRAPH_CARBON_ROUTINE(0x107689e0, 0x10768b38, R3, "6f3f1c89ccb1d216", [](Cpu& c) { graph_carbon::set_full_screen(c, c.r(3)); })
+GRAPH_CARBON_ROUTINE(0x10768b40, 0x10768c4c, R3, "9cf8cd2ec4d71bc7", [](Cpu& c) { graph_carbon::display_bounds(c, c.r(4), c.r(5)); })
+GRAPH_CARBON_ROUTINE(0x10768c50, 0x10768c84, R3, "91c36aead22a2351", [](Cpu& c) { graph_carbon::leave_full_screen(c); })
+GRAPH_CARBON_ROUTINE(0x10768c90, 0x10768dc0, R3, "178f3da5679a29ce", [](Cpu& c) { graph_carbon::create_surface(c); })
+GRAPH_CARBON_ROUTINE(0x10768dc0, 0x10768e04, R3, "36c671a372db0452", [](Cpu& c) { graph_carbon::dispose_surface(c); })
+GRAPH_CARBON_ROUTINE(0x10768e10, 0x107690e4, R3, "28537d531d132b77", [](Cpu& c) { graph_carbon::create_window(c, c.r(3), c.r(4)); })
+GRAPH_CARBON_ROUTINE(0x107690f0, 0x107691a4, R3, "d17c2adef0ffa3b9", [](Cpu& c) { graph_carbon::window_bounds(c, c.r(3)); })
+GRAPH_CARBON_ROUTINE(0x107691b0, 0x107692e4, R3, "0307d148a78c1be6", [](Cpu& c) { graph_carbon::close_window(c, c.r(3)); })
+GRAPH_CARBON_ROUTINE(0x107692f0, 0x10769460, R3, "1b05a9f008c23cca", [](Cpu& c) { graph_carbon::flush_rect(c, c.r(3), c.r(4), c.r(5), c.r(6)); })
+GRAPH_CARBON_ROUTINE(0x1076e7c0, 0x1076e868, R3, "262f16b7b7a0f676", [](Cpu& c) { graph_carbon::load_cursors(c); })
+GRAPH_CARBON_ROUTINE(0x1076e870, 0x1076e904, R3, "f7e36e71ee758c0b", [](Cpu& c) { graph_carbon::release_cursors(c); })
+GRAPH_CARBON_ROUTINE(0x1076e920, 0x1076e9d0, R3, "7f4ea3db074b52cb", [](Cpu& c) { graph_carbon::set_cursor(c, c.r(3)); })
+GRAPH_CARBON_ROUTINE(0x1076e9d0, 0x1076ea20, R3, "4e1c851471a8ee52", [](Cpu& c) { graph_carbon::paint_window(c); })

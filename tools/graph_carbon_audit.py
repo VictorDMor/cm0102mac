@@ -145,7 +145,8 @@ def routine_lines(path=INCLUDES):
 
 # Routed entries whose C++ runs native_drawing_boundary at each observation point inside the body itself (none yet: a block that
 # routes one of the pixel primitives or the text drawer adds its entry here, with the check that the observer still sees every point).
-OBSERVES_INTERIOR = frozenset()
+OBSERVES_INTERIOR = frozenset({0x1076ca50, 0x10769460, 0x1076b020, 0x1076b140})  # text: draw_text runs native_drawing_boundary at 0x1076d194 itself; remap: fade_rectangle at 0x107696cc and 0x107697b0; colours: capture_rectangle at 0x1076b138, blit_bitmap at 0x1076b234
+OBSERVES_INTERIOR |= frozenset({0x107697c0, 0x10769980, 0x1076a140, 0x1076a580, 0x1076ad50})  # pixels: the exits 0x107698c4, 0x10769b48, 0x1076a570, 0x1076a784 and 0x1076b014 run native_drawing_boundary in graph_carbon_fills.cpp / graph_carbon_lines.cpp (their typed calls into 0x1076a140 run its entry's too)
 
 
 def observed_inside(entry, end):

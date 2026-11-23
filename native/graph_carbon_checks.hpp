@@ -73,6 +73,11 @@ struct Case {
     // reach: the `nth` call (from 1; 0 for every call) of the import in a run sets r3 to `r3`, applies `writes` and returns.
     struct Import { const char* name; unsigned nth; std::uint32_t r3; std::vector<Write> writes = {}; };
     std::vector<Import> imports = {};
+    // The assertion box 0x10769b60 runs for real on both sides instead of being answered (the checker answers it while the module does not list
+    // it, which reaches only calls that go through the dispatcher: an assertion on the box's own page (0x10769xxx) is a call in the page, so the
+    // original would run the box and the C++ would not). The case must make the box leave quietly (its re-entrancy byte, small data -0x356f, or the
+    // "initialising" byte -0x3550 for its printf path).
+    bool real_dialog = false;
 };
 struct Scenario {
     State& s;
