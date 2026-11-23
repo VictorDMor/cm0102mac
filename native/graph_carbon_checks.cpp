@@ -260,7 +260,7 @@ void record_boundary(State& s, std::uint32_t pc) {
     s.memory.write<4>(boundary_log + 4, hash);
 }
 }
-namespace cm::aot { extern void (*graph_carbon_leaver_probe)(State&, std::uint32_t); extern void (*native_scope_probe)(State&, std::uint32_t); }
+namespace cm::aot { extern bool (*graph_carbon_original_answer)(State&, std::uint32_t); extern void (*graph_carbon_leaver_probe)(State&, std::uint32_t); extern void (*native_scope_probe)(State&, std::uint32_t); }
 namespace cm::aot { extern void (*native_drawing_boundary_probe)(State&, std::uint32_t); }
 namespace cm::aot::graph_carbon_checks {
 // A run's start (the checked entry's stack pointer): the check's origin. Also called by the end-to-end sweeps.
@@ -269,6 +269,13 @@ void install_leaver_check(State& s) {
     last_leaver_entry = 0;
     last_leaver_executed = ~std::uint64_t(0);
     graph_carbon_leaver_probe = record_original;
+    // The assertion box called from a `bl` inside its own page (0x107692f0's and 0x10768e10's assertions) is not a dispatch: the original would run it
+    // for real where the rewrite's c.call is answered. Answered here too, except in the cases that run the box (Case::real_dialog).
+    graph_carbon_original_answer = [](State& state, std::uint32_t entry) {
+        if (entry != 0x10769b60 || case_real_dialog) return false;
+        state.pc = state.r<4>(4128);
+        return true;
+    };
     native_scope_probe = record_scope;
     boundary_first = true;
     native_drawing_boundary_probe = record_boundary;
@@ -445,6 +452,8 @@ void verify_run(State& s, const char* who) {
 }
 // Dispatches of each routine with an nth answer, in this process: every compared run is a fresh child.
 std::map<std::uint32_t, unsigned> nth_dispatches;
+// The same for the pokes with an nth.
+std::map<std::uint32_t, unsigned> poke_dispatches;
 void store(State& s, const Write& write, std::uint32_t value) {
     if (write.size == 1) s.memory.write<1>(write.address, value & 0xff);
     else if (write.size == 2) s.memory.write<2>(write.address, value & 0xffff);
@@ -1084,9 +1093,15 @@ int main(int argc, char** argv) {
             // A case's answers for another module's routine, given on both sides. A routine
             // under check is never answered: its C++ doesn't come through here, so only the
             // original would get the answer.
-            if (case_pokes) for (const auto& poke : *case_pokes)
-                if (target.pc == poke.entry && !(routine_checker && routine_checker->wants(poke.entry)))
-                    for (const auto& write : poke.writes) store(target, write, write.value);
+            if (case_pokes) {
+                unsigned dispatch = 0;
+                for (const auto& poke : *case_pokes)
+                    if (target.pc == poke.entry && !(routine_checker && routine_checker->wants(poke.entry))) {
+                        if (!dispatch) dispatch = ++poke_dispatches[poke.entry];
+                        if (poke.nth == 0 || poke.nth == dispatch)
+                            for (const auto& write : poke.writes) store(target, write, write.value);
+                    }
+            }
             if (case_captures) for (const auto& capture : *case_captures)
                 if (target.pc == capture.entry && !(routine_checker && routine_checker->wants(capture.entry))) {
                     const auto from = std::uint32_t(target.r<4>(guest::reg::gpr(capture.reg)));
@@ -1111,8 +1126,9 @@ int main(int argc, char** argv) {
                     target.pc = target.r<4>(4128);
                     return true;
                 }
-            // The message box of the assertions needs a host: answered while its routine is not part of the module's C++.
-            if (target.pc != dialog_entry || graph_carbon_lists(dialog_entry) || case_real_dialog) return false;
+            // The message box of the assertions needs a host: answered, except in the cases that run it for real (Case::real_dialog: the box's own
+            // cases script its callees and the pump; the others make it quiet).
+            if (target.pc != dialog_entry || case_real_dialog) return false;
             target.pc = target.r<4>(4128);
             return true;
         };
@@ -1124,6 +1140,8 @@ int main(int argc, char** argv) {
             // A routine a case answers is not run in that case, so it is not under check there (the answer would reach one side only).
             if (case_answers) for (const auto& answer : *case_answers) if (answer.first == entry) return false;
             if (case_nth_answers) for (const auto& answer : *case_nth_answers) if (answer.entry == entry) return false;
+            // The box is under check only in the cases that run it for real; in every other one it is answered at its dispatch.
+            if (entry == 0x10769b60 && !case_real_dialog) return false;
             return graph_carbon_lists(entry) && (options.only.empty() || options.only.count(entry) != 0);
         };
         RoutineChecker checker(wanted, options.all, options.every);

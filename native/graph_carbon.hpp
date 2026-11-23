@@ -154,4 +154,19 @@ void fill_rectangle(Cpu&, std::int32_t x1, std::int32_t y1, std::int32_t x2, std
 // 0x1076a790: paints `colour` at the pixels where the bitmap {width, height, width * height bytes} is not zero, its upper left at (x, y)
 // (a null bitmap raises the assertion). A leaver.
 void draw_mask(Cpu&, std::int32_t x, std::int32_t y, std::uint32_t colour, std::uint32_t bitmap);
+// Block `box` (graph_carbon_box.cpp): the assertion box every report of the game ends in.
+// 0x10768810: the address of the version text the assertion report formats (6,402 callers).
+std::uint32_t version_text(Cpu&);
+// 0x10769b60: shows `message` and `detail` in a panel with an OK button (and a Quit button when the low byte of `offer_quit` is nonzero) over the
+// saved surface and runs the event loop until OK or the return key; Quit calls MAIN's exit. While the graphics are being created, or with the
+// "show dialogs" byte zero, prints "MESSAGE %s %s" instead; a nested call while it is showing returns at once.
+void assertion_box(Cpu&, std::uint32_t message, std::uint32_t detail, std::uint32_t offer_quit);
+// 0x1076e5f0: the message panel: pumps the events, asks the current club's window to redraw when `step` is 0, and draws the framed one-line panel
+// of `text` with, for a `total` above 0 and a `step` not above it, a progress bar of step / total; 1 when drawn, 0 when the graphics are being
+// created (or for no text: the assertion). A leaver. Emits the profiling events the original passes ("Progress submit" and "Progress draw end").
+std::uint32_t message_panel(Cpu&, std::uint32_t text, std::uint32_t step, std::uint32_t total);
+// 0x1076e160: draws `text` word-wrapped into the rectangle (x1, y1)-(x2, y2) (inclusive) as `style` says (alignment, shadow, '*' masking), the ninth
+// argument (the caller's sp + 0x38) the drawer's limit. A leaver.
+void text_box(Cpu&, std::uint32_t x1, std::uint32_t y1, std::uint32_t x2, std::uint32_t y2, std::uint32_t style, std::uint32_t font,
+              std::uint32_t colour, std::uint32_t text);
 }

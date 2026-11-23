@@ -149,6 +149,18 @@ OBSERVES_INTERIOR = frozenset({0x1076ca50, 0x10769460, 0x1076b020, 0x1076b140}) 
 OBSERVES_INTERIOR |= frozenset({0x107697c0, 0x10769980, 0x1076a140, 0x1076a580, 0x1076ad50})  # pixels: the exits 0x107698c4, 0x10769b48, 0x1076a570, 0x1076a784 and 0x1076b014 run native_drawing_boundary in graph_carbon_fills.cpp / graph_carbon_lines.cpp (their typed calls into 0x1076a140 run its entry's too)
 
 
+# Routed entries whose C++ passes the profiling markers inside the body itself (tools/profiling_boundaries.py: the message panel's "Progress submit" at
+# 0x1076e7a4 and "Progress draw end" at 0x1076e7bc; the page emits the entry's marker before the hook). Such an entry is also kept out of the in-place
+# owner table (compile_recomp.owner_entries_in_place), which would skip the page's marker.
+PROFILES_INTERIOR = frozenset({0x1076e5f0})
+
+
+def profiled_inside(entry, end):
+    """The profiling markers strictly inside a routine (the entry's own is emitted by the generated page)."""
+    from profiling_boundaries import PROFILE_BOUNDARIES
+    return sorted(a for a in PROFILE_BOUNDARIES if entry < a < end)
+
+
 def observed_inside(entry, end):
     """The native-drawing observation points strictly inside a routine (the entry's own is run by the generated page)."""
     from native_drawing_audit import NATIVE_DRAWING_BOUNDARIES
@@ -169,6 +181,8 @@ def rewritten(path=INCLUDES, drafts=False):
         if (inside := observed_inside(entry, end)) and entry not in OBSERVES_INTERIOR:
             raise ValueError(f"graph_carbon_routines.inc: {entry:x} holds native drawing observation points "
                              f"{[hex(a) for a in inside]} its C++ would skip")
+        if (inside := profiled_inside(entry, end)) and entry not in PROFILES_INTERIOR:
+            raise ValueError(f"graph_carbon_routines.inc: {entry:x} holds profiling markers {[hex(a) for a in inside]} its C++ would skip")
     if len({entry for entry, _, _ in found}) != len(found):
         raise ValueError("A graph_carbon.cpp routine is listed twice")
     return found
@@ -177,8 +191,8 @@ def rewritten(path=INCLUDES, drafts=False):
 GRAPH_CARBON_ENTRIES = tuple(entry for entry, _ in ROUTINES)
 GRAPH_CARBON_HOOKED = tuple(entry for entry, _, _ in rewritten(drafts=True))
 
-# The generator requires every owned entry routed once this is true. Not yet: the pilot block only.
-COMPLETE = False
+# The generator requires every owned entry routed (GRAPH_CARBON_ROUTINE): all 54 are.
+COMPLETE = True
 
 
 def require_graph_carbon_index(db, path=INCLUDES, complete=None):

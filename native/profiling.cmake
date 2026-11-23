@@ -2,9 +2,9 @@ option(CM_ENABLE_TRACY "Instrument Continue and native presentation with Tracy" 
 
 # Keep compiler flags unchanged across OFF/ON. Unix Makefiles share flags.make
 # across a target: conditional per-source defines would invalidate all ~1,900
-# generated pages. Only these eleven files depend on the configured header.
+# generated pages. Only these twelve files depend on the configured header.
 set(cm_profile_sources main_thread.mm ui_bridge.mm ui_event_queue.cpp
-    platform.cpp presentation_frame.cpp screen_manager_monitor.cpp
+    platform.cpp presentation_frame.cpp screen_manager_monitor.cpp graph_carbon_text_panel.cpp
     print_panels.mm thread_host_checks.mm
     "${CM_GENERATED_DIR}/page_102a6.cpp"
     "${CM_GENERATED_DIR}/page_10119.cpp"

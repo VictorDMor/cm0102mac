@@ -38,7 +38,8 @@ struct Case {
     // The routine must reach the dispatcher on both sides (not a routine under check, a leaf run in
     // place or a tactics owner); with --call-trace a poke that fires on one side more than on the
     // other is a finding, and the ones that fire on neither are counted (pokes_unfired).
-    struct Poke { std::uint32_t entry; std::vector<Write> writes; };
+    // `nth` (from 1; 0 for every dispatch): only the nth dispatch of the entry in a run writes (a script: the mouse of the assertion box at each pump).
+    struct Poke { std::uint32_t entry; std::vector<Write> writes; unsigned nth = 0; };
     std::vector<Poke> pokes = {};
     // The bytes a routine the checked one calls is handed, observed: at each dispatch of `entry` (answered or not)
     // `size` bytes at the address in register `reg` are copied to `to` on both sides, where the memory comparison sees
@@ -73,10 +74,10 @@ struct Case {
     // reach: the `nth` call (from 1; 0 for every call) of the import in a run sets r3 to `r3`, applies `writes` and returns.
     struct Import { const char* name; unsigned nth; std::uint32_t r3; std::vector<Write> writes = {}; };
     std::vector<Import> imports = {};
-    // The assertion box 0x10769b60 runs for real on both sides instead of being answered (the checker answers it while the module does not list
-    // it, which reaches only calls that go through the dispatcher: an assertion on the box's own page (0x10769xxx) is a call in the page, so the
-    // original would run the box and the C++ would not). The case must make the box leave quietly (its re-entrancy byte, small data -0x356f, or the
-    // "initialising" byte -0x3550 for its printf path).
+    // The assertion box 0x10769b60 runs for real on both sides instead of being answered (the checker answers it in every other case, which reaches
+    // only calls that go through the dispatcher: an assertion on the box's own page (0x10769xxx) is a call in the page, so the original would run
+    // the box and the C++ would not). Either the case checks the box itself (entry 0x10769b60, its imports and callees scripted), or it must make
+    // the box leave quietly (its re-entrancy byte, small data -0x356f, or the "initialising" byte -0x3550 for its printf path).
     bool real_dialog = false;
 };
 struct Scenario {

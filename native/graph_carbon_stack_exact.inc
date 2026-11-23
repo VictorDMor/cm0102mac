@@ -17,3 +17,7 @@
 // pixels: the frames of 0x1076a140 (r19), 0x10769980 (r24), 0x1076a790 (r30), 0x1076ad50, 0x1076a580 and 0x107697c0, the stack word 0x1076ad50 hands the octants at its sp + 0x38 and the
 // octants' own stmw below their stack pointer are the original's; the callees run at their own stack pointer with the registers the original holds there.
 0x1076a140, 0x10769980, 0x1076a790, 0x1076ad50, 0x1076a8f0, 0x1076a580, 0x107697c0,
+// box, panel and text box: 0x10769b60 (saves r13-r31), 0x1076e5f0 (the leaver r24) and 0x1076e160 (the leaver r18) build the original's frames (the saved registers,
+// the link register, the back chain, the argument words, the saved cursor and surface, the ninth-argument word) and call every callee at their own stack pointer with
+// the registers the original holds there.
+0x10769b60, 0x1076e5f0, 0x1076e160,

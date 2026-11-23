@@ -109,8 +109,12 @@ bool graph_carbon_dispatch_probe(State& s) {
 // The checker's leaver check (graph_carbon_checks.cpp): called for the original's entry into a leaver (the hook is reached at every
 // entry, through the dispatcher or from the same page, and for a call from another page twice: the checker de-duplicates).
 void (*graph_carbon_leaver_probe)(State&, std::uint32_t) = nullptr;
+// The checker's answer for an entry the ORIGINAL runs in place on its own page (a `bl` inside the same page is not a dispatch, so the checker's scripted
+// answers do not see it): true when the entry is answered and its body must not run (graph_carbon_checks.cpp: the assertion box in a case that does not run it).
+bool (*graph_carbon_original_answer)(State&, std::uint32_t) = nullptr;
 bool try_modern_graph_carbon(State& s, std::uint32_t entry) {
     if (graph_carbon_leaver_probe && graph_carbon_declining) [[unlikely]] graph_carbon_leaver_probe(s, entry);
+    if (graph_carbon_original_answer && graph_carbon_declining) [[unlikely]] if (graph_carbon_original_answer(s, entry)) return true;
     // A check run with --only runs the other routines' originals, so each
     // routine is checked at every call from the original's own callers.
     if (graph_carbon_declining || !selected(entry) || (routine_checker && !routine_checker->wants(entry))) return false;

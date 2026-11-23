@@ -95,6 +95,8 @@ ROUTED = ROUTED | frozenset({0x107697c0, 0x10769980, 0x1076a140, 0x1076a580, 0x1
 ROUTED = ROUTED | frozenset({0x1076b830, 0x1076b6e0, 0x1076b7e0, 0x1076b020, 0x1076b140, 0x1076b240, 0x1076b2f0, 0x1076b450})  # colours (colour variables, bitmaps, .rgm files)
 ROUTED = ROUTED | frozenset({0x10769460, 0x1076d6e0})  # remap (the screen fade), frames (the framed rectangle)
 ROUTED = ROUTED | frozenset({0x1076d5a0, 0x1076d470, 0x1076d1e0, 0x1076ca50, 0x1076bbf0, 0x1076c0b0, 0x1076c980, 0x1076c050, 0x1076c010, 0x1076d1a0, 0x1076ea70})  # text (fonts and text, but the text box 0x1076e160 and the message panel 0x1076e5f0)
+ROUTED = ROUTED | frozenset({0x1076e160, 0x1076e5f0})  # text box and message panel (the panel carries the profiling markers)
+ROUTED = ROUTED | frozenset({0x10768810, 0x10769b60})  # box (the version-text getter and the assertion box: 990 pages' call sites)
 ASSEMBLY_TARGET = re.compile(r'^(b|bl|b[a-z]+) (0x[0-9a-f]+)$')
 SLOT = re.compile(r'^lwz r\d+,(-?0x[0-9a-f]+)\(r2\)$')
 SMALL = re.compile(r'^(?:l[bhwf][zas]?|st[bhwf][sd]?|lfs|lfd|stfs|stfd|lha) \w+,(-?0x[0-9a-f]+)\(r2\)$')
@@ -335,6 +337,20 @@ class GraphCarbonAuditTests(unittest.TestCase):
             with mock.patch.object(audit, 'OBSERVES_INTERIOR', frozenset()):
                 with self.assertRaisesRegex(ValueError, 'observation points'):
                     audit.rewritten(candidate, drafts=True)
+        # The profiling markers (tools/profiling_boundaries.py): the message panel holds two inside its body and the entry's, so its C++ passes the two
+        # inside (PROFILES_INTERIOR) and the generator keeps it out of the in-place owner table; any other routed entry holding one is refused.
+        self.assertEqual(audit.profiled_inside(0x1076e5f0, 0x1076e7c0), [0x1076e7a4, 0x1076e7bc])
+        self.assertEqual([entry for entry, end in audit.ROUTINES if audit.profiled_inside(entry, end)], [0x1076e5f0])
+        with tempfile.TemporaryDirectory() as directory:
+            candidate = Path(directory) / 'routines.inc'
+            candidate.write_text('GRAPH_CARBON_DRAFT(0x1076e5f0, 0x1076e7c0, R3, "0000000000000000", name)\n')
+            with mock.patch.object(audit, 'PROFILES_INTERIOR', frozenset()):
+                with self.assertRaisesRegex(ValueError, 'profiling markers'):
+                    audit.rewritten(candidate, drafts=True)
+            audit.rewritten(candidate, drafts=True)
+        from compile_recomp import direct_owner_entries
+        self.assertNotIn(0x1076e5f0, direct_owner_entries())
+        self.assertIn(0x1076e160, direct_owner_entries())
         # The leavers: each prologue saves registers from the first named one to r31 (stmw), or r31 and r30 one by one.
         self.assertEqual(len(audit.LEAVERS), 12)
         for entry, first in audit.LEAVERS.items():
@@ -348,7 +364,8 @@ class GraphCarbonAuditTests(unittest.TestCase):
     def test_exactly_the_routed_blocks_are_routed_and_hooked_and_the_hook_checks_fail_when_they_should(self):
         from compile_recomp import OWNER_REPLACEMENTS, SEMANTIC_REPLACEMENTS, generate_page
         pinned = {a: (b, d) for a, b, _, d in CONTRACTS}
-        self.assertFalse(audit.COMPLETE)
+        self.assertTrue(audit.COMPLETE)
+        self.assertEqual(ROUTED, set(audit.OWNED))
         listed = audit.rewritten(drafts=True)
         for entry, end, expected in listed:
             self.assertEqual(pinned[entry], (end, expected))

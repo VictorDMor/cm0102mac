@@ -446,6 +446,11 @@ screen-monitor exit to the next input wait excludes work before that exit.
 `Progress draw begin/end` bracket the original progress routine;
 `Progress submit` marks its redraw call after valid text and visibility gates.
 These messages mark original control flow, not physical screen presentation.
+Once the progress routine (graph_carbon.cpp's message panel, 0x1076e5f0) runs as C++, the page still emits `Progress draw begin` before the
+owner hook, the C++ emits `Progress submit` before its redraw call and `Progress draw end` after its epilogue (`graph_carbon_text_panel.cpp`,
+one of the files that include `profiling.hpp`: `native/profiling.cmake`), and the entry stays out of the in-place owner table
+(`owner_entries_in_place` excludes `PROFILE_BOUNDARIES`), because an in-place call would skip the page's marker. A later owner whose routine
+carries a profiling boundary does the same.
 Use the subsequent `AppKit install and display` zone and `Presented frames`
 marker to locate the host drawing submission. Neither proves display scanout.
 

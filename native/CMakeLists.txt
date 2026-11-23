@@ -4806,8 +4806,9 @@ if(CM_FONT_CPP_COVERAGE)
 endif()
 
 # graph_carbon.cpp (tools/graph_carbon_audit.py): the game's drawing layer over the Mac (surfaces, rectangles, text entry points, the
-# assertion box), rewritten block by block (the leaf routines first). The module is not complete: the production test names no
-# --require-all until every owned entry is routed (COMPLETE). The inputs are the UI state of a running game (the save-info capture).
+# assertion box), rewritten as handwritten C++ (all 54 owned entries routed). graph_carbon_argument_masks.txt lists, for each routine the module
+# calls, the argument registers it reads (tools/call_arguments.py 0x10768810 0x1076eaa0, merged with the blocks' own lists: 0xff for the module's
+# own routines), so the call trace compares those arguments at every call. The inputs are the UI state of a running game (the save-info capture).
 file(GLOB CM_GRAPH_CARBON_SOURCES CONFIGURE_DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/graph_carbon*.cpp")
 list(FILTER CM_GRAPH_CARBON_SOURCES EXCLUDE REGEX "_checks(_[a-z0-9_]+)?\\.cpp$")
 target_sources(cm_aot PRIVATE ${CM_GRAPH_CARBON_SOURCES})
@@ -4820,7 +4821,8 @@ if(EXISTS "${CM_ORACLE_DIR}/program.json")
 endif()
 if(EXISTS "${CM_ORACLE_DIR}/program.json" AND EXISTS "${CM_BENCHMARK_DIR}/ui/save-info/initial.snapshot")
     set(CM_GRAPH_CARBON_INPUTS --world "${CM_BENCHMARK_DIR}/ui/save-info/initial.snapshot")
-    add_test(NAME graph_carbon_equivalence COMMAND cm-graph-carbon-checks ${CM_GRAPH_CARBON_INPUTS} --mutate 4 --call-trace --require-all)
+    add_test(NAME graph_carbon_equivalence COMMAND cm-graph-carbon-checks ${CM_GRAPH_CARBON_INPUTS} --mutate 4 --call-trace
+             --argument-masks "${CMAKE_CURRENT_SOURCE_DIR}/graph_carbon_argument_masks.txt" --require-all)
     add_test(NAME graph_carbon_production COMMAND cm-graph-carbon-checks ${CM_GRAPH_CARBON_INPUTS} --production)
     set_tests_properties(graph_carbon_equivalence graph_carbon_production PROPERTIES ENVIRONMENT "CM_ENGLISH_RULES_ORIGINAL=1")
 endif()

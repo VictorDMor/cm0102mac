@@ -917,8 +917,10 @@ def owner_entries_in_place(watched=frozenset()):
     counts = defaultdict(int)
     for entry, _ in OWNER_REPLACEMENTS:
         counts[entry] += 1
+    # PROFILE_BOUNDARIES: an owner entry that carries a profiling marker keeps its page's entry (marker, then the hook), so an
+    # in-place call would skip the marker; the owner's C++ emits the markers inside its body itself (graph_carbon_text_panel.cpp).
     other = (set(SPECIAL_LOWERINGS) | set(NATIVE_RECORD_FIELDS) | {NATIVE_SORT8_ENTRY} | set(NATIVE_DRAWING_BOUNDARIES) |
-             set(CALENDAR_ADAPTER_ENTRIES) | set(RNG_CORE_ENTRIES) |
+             set(PROFILE_BOUNDARIES) | set(CALENDAR_ADAPTER_ENTRIES) | set(RNG_CORE_ENTRIES) |
              set(CAPTURE_OBSERVATIONS) | {LIST_SEARCH_ENTRY, 0x101195e8, 0x10779ed8, 0x1071a828} | set(watched))
     return {entry: module.removesuffix("_adapter") for entry, module in OWNER_REPLACEMENTS
             if module.endswith("_adapter") and module not in NONSTANDARD_OWNER_MODULES and counts[entry] == 1
