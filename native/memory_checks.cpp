@@ -152,10 +152,11 @@ void write_notification_checks() {
     filtered.interval(0, 0);
     const auto before_empty = filtered.calls;
     memory.write<8>(base + 32, 0);
-    require(filtered.calls == before_empty, "Empty write interest received a scalar callback");
+    // An empty interval counts as unrestricted: told more, never less (16d2078a).
+    require(filtered.calls == before_empty + 1, "Empty write interest lost a scalar callback");
     // Bulk notifications retain their complete existing callback contract.
     memory.copy_in(base, {1, 2, 3});
-    require(filtered.calls == before_empty + 1 && filtered.writes.back().second == 3,
+    require(filtered.calls == before_empty + 2 && filtered.writes.back().second == 3,
             "Bulk write notification changed");
     memory.observer = memory.date_observer = nullptr;
 
