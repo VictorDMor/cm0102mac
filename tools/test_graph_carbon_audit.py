@@ -329,25 +329,22 @@ class GraphCarbonAuditTests(unittest.TestCase):
         self.assertEqual(len(entries), 12)
         self.assertEqual(sorted(set(observed) - set(entries)), [0x107696cc, 0x107697b0, 0x107698c4, 0x10769b48, 0x1076a570, 0x1076a784,
                                                                 0x1076b014, 0x1076b138, 0x1076b234, 0x1076d194])
-        # A routed entry may not hold one inside its body: the guard names it.
+        # A routed entry may not hold one (or its entry's) unless HANDLED_POINTS lists it (tools/host_observed.py, tools/test_host_observed.py
+        # flips each draft); a draft is not refused.
         with tempfile.TemporaryDirectory() as directory:
             candidate = Path(directory) / 'routines.inc'
-            candidate.write_text('GRAPH_CARBON_DRAFT(0x10769460, 0x107697b4, R3, "0000000000000000", name)\n')
-            # (every entry with observation points inside is now one whose C++ runs them: the guard is shown with none named.)
-            with mock.patch.object(audit, 'OBSERVES_INTERIOR', frozenset()):
-                with self.assertRaisesRegex(ValueError, 'observation points'):
-                    audit.rewritten(candidate, drafts=True)
-        # The profiling markers (tools/profiling_boundaries.py): the message panel holds two inside its body and the entry's, so its C++ passes the two
-        # inside (PROFILES_INTERIOR) and the generator keeps it out of the in-place owner table; any other routed entry holding one is refused.
+            candidate.write_text('GRAPH_CARBON_ROUTINE(0x10769460, 0x107697b4, R3, "0000000000000000", name)\n')
+            with mock.patch.object(audit, 'HANDLED_POINTS', {}):
+                with self.assertRaisesRegex(ValueError, 'host-observed instructions'):
+                    audit.rewritten(candidate)
+                audit.rewritten(Path(directory) / 'missing.inc')
+                candidate.write_text('GRAPH_CARBON_DRAFT(0x10769460, 0x107697b4, R3, "0000000000000000", name)\n')
+                audit.rewritten(candidate, drafts=True)
+        # The profiling markers (tools/profiling_boundaries.py): the message panel holds two inside its body and the entry's; its C++ passes the
+        # two inside and the generator keeps it out of the in-place owner table (the page emits the entry's marker before the hook).
         self.assertEqual(audit.profiled_inside(0x1076e5f0, 0x1076e7c0), [0x1076e7a4, 0x1076e7bc])
         self.assertEqual([entry for entry, end in audit.ROUTINES if audit.profiled_inside(entry, end)], [0x1076e5f0])
-        with tempfile.TemporaryDirectory() as directory:
-            candidate = Path(directory) / 'routines.inc'
-            candidate.write_text('GRAPH_CARBON_DRAFT(0x1076e5f0, 0x1076e7c0, R3, "0000000000000000", name)\n')
-            with mock.patch.object(audit, 'PROFILES_INTERIOR', frozenset()):
-                with self.assertRaisesRegex(ValueError, 'profiling markers'):
-                    audit.rewritten(candidate, drafts=True)
-            audit.rewritten(candidate, drafts=True)
+        self.assertLessEqual({0x1076e5f0, 0x1076e7a4, 0x1076e7bc}, audit.HANDLED_POINTS[0x1076e5f0])  # and the 17 adaptive `li`
         from compile_recomp import direct_owner_entries
         self.assertNotIn(0x1076e5f0, direct_owner_entries())
         self.assertIn(0x1076e160, direct_owner_entries())
@@ -364,8 +361,8 @@ class GraphCarbonAuditTests(unittest.TestCase):
     def test_exactly_the_routed_blocks_are_routed_and_hooked_and_the_hook_checks_fail_when_they_should(self):
         from compile_recomp import OWNER_REPLACEMENTS, SEMANTIC_REPLACEMENTS, generate_page
         pinned = {a: (b, d) for a, b, _, d in CONTRACTS}
-        self.assertFalse(audit.COMPLETE)
-        DRAFTS = frozenset({0x10769b60, 0x1076ad50, 0x1076e5f0})  # the host's HD drawing observes instructions inside them
+        self.assertTrue(audit.COMPLETE)
+        DRAFTS = frozenset()  # (2026-11-23: the box, the ellipse and the message panel were drafts for the host's adaptive layout; routed again)
         self.assertEqual(ROUTED, set(audit.OWNED))
         listed = audit.rewritten(drafts=True)
         for entry, end, expected in listed:
@@ -386,17 +383,19 @@ class GraphCarbonAuditTests(unittest.TestCase):
                 owned = [c for c in CONTRACTS if c[0] in audit.OWNED]
                 lines = ''.join(f'GRAPH_CARBON_ROUTINE(0x{a:x}, 0x{b:x}, R3, "{d}", name)\n' for a, b, _, d in owned)
                 candidate.write_text(lines)
-                # A routed entry with observation points inside is refused unless its C++ runs them (OBSERVES_INTERIOR).
-                # (with every block in, no owned entry is left without its C++ running the points: the refusal is shown with none named.)
-                with mock.patch.object(audit, 'OBSERVES_INTERIOR', frozenset()):
-                    with self.assertRaisesRegex(ValueError, 'observation points'):
+                audit.require_graph_carbon_index(db, candidate, complete=True)
+                # A routed entry holding host-observed instructions is refused unless HANDLED_POINTS lists them, and one calling a host-observed
+                # entry unless HANDLED_CALLS lists it (tools/host_observed.py; tools/test_host_observed.py removes each listing in turn).
+                with mock.patch.object(audit, 'HANDLED_POINTS', {}):
+                    with self.assertRaisesRegex(ValueError, 'host-observed instructions'):
                         audit.require_graph_carbon_index(db, candidate, complete=True)
-                with mock.patch.object(audit, 'OBSERVES_INTERIOR', frozenset(owned_entry for owned_entry, *_ in owned)):
+                with mock.patch.object(audit, 'HANDLED_CALLS', {}):
+                    with self.assertRaisesRegex(ValueError, 'HANDLED_CALLS'):
+                        audit.require_graph_carbon_index(db, candidate, complete=True)
+                first = owned[0][0]
+                candidate.write_text(lines.replace(f'GRAPH_CARBON_ROUTINE(0x{first:x},', f'GRAPH_CARBON_DRAFT(0x{first:x},', 1))
+                with self.assertRaisesRegex(ValueError, 'requires all 54'):
                     audit.require_graph_carbon_index(db, candidate, complete=True)
-                    first = owned[0][0]
-                    candidate.write_text(lines.replace(f'GRAPH_CARBON_ROUTINE(0x{first:x},', f'GRAPH_CARBON_DRAFT(0x{first:x},', 1))
-                    with self.assertRaisesRegex(ValueError, 'requires all 54'):
-                        audit.require_graph_carbon_index(db, candidate, complete=True)
         selected = set(self.by_address)
         pages = sorted({entry >> 12 for entry in ROUTED} | {0x10768})  # the routed pages and one with unrouted entries only
         for page in pages:

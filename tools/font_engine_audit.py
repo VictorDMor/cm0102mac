@@ -39,6 +39,7 @@ the set; COMPLETE makes the generator refuse anything less than all 263 routed.
 import re
 from pathlib import Path
 
+from host_observed import require_calls_handled, require_handled
 from tactics_audit import digest, routine_records
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -213,18 +214,27 @@ def unit_of(entry):
     raise ValueError(f"{entry:x} is not in the font engine")
 
 
+# The scan converter constructor 0x107620d0 carries an entry boundary: its page runs the observation, so every caller must reach it
+# through its page: its one caller, the glyph renderer 0x1075fa10, calls it with c.call (font_engine_t2k_core.cpp, HANDLED_CALLS) and no C++ calls
+# new_scan_converter typed (tools/test_font_engine_audit.py pins both). Nothing else is observed inside.
+HANDLED_POINTS = {0x107620d0: frozenset({0x107620d0})}  # entry -> host-observed addresses its C++ (or the page, at the entry) passes; see tools/host_observed.py
+HANDLED_CALLS = {0x1075fa10: frozenset({0x107620d0})}  # entry -> host-observed entries it calls that stay right (c.call, or a typed call passing the point)
+
+
 def rewritten(path=INCLUDES, drafts=False):
     """(entry, end, digest) of each routine whose C++ is verified and routed (FONT_ENGINE_ROUTINE), with drafts also the
     FONT_ENGINE_DRAFT ones, which only check tools run."""
-    found = sorted((int(entry, 16), int(end, 16), digest) for stage, entry, end, _, digest in
+    found = sorted((int(entry, 16), int(end, 16), digest, stage) for stage, entry, end, _, digest in
                    ROUTINE.findall(routine_lines(path)) if drafts or stage == "ROUTINE")
     bounds = dict(ROUTINES)
-    for entry, end, _ in found:
+    for entry, end, _, stage in found:
         if bounds.get(entry) != end:
             raise ValueError(f"font_engine_routines.inc: {entry:x}-{end:x} is not a routine of the font engine")
-    if len({entry for entry, _, _ in found}) != len(found):
+        if stage == "ROUTINE":
+            require_handled("font_engine_routines.inc", entry, end, HANDLED_POINTS)
+    if len({entry for entry, _, _, _ in found}) != len(found):
         raise ValueError("A font engine routine is listed twice")
-    return found
+    return [(entry, end, digest) for entry, end, digest, _ in found]
 
 
 FONT_ENGINE_ENTRIES = tuple(entry for entry, _ in ROUTINES)
@@ -240,6 +250,8 @@ def require_font_engine_index(db, path=INCLUDES, complete=None):
     registered = rewritten(path, drafts=True)
     if complete and tuple((entry, end) for entry, end, _ in rewritten(path)) != ROUTINES:
         raise ValueError("The font engine requires all 263 complete production entries")
+    for entry, end, _ in rewritten(path):
+        require_calls_handled("font_engine_routines.inc", db, entry, end, HANDLED_CALLS)
     for entry, end, expected in registered:
         body = routine_records(db, entry, end)
         if [r['address'] for r in body] != [a for a in range(entry, end, 4) if a not in UNREACHABLE]:

@@ -32,10 +32,13 @@ Bounds (the evidence tools/test_graph_carbon_audit.py pins):
    every other word is alignment padding between routines (at most 12 bytes); no routine tail-calls another; three `bctr`s are the
    jump tables of the text drawers (0x1076ca50, 0x1076d1e0, 0x1076d470, eight entries each, inside their routines).
 
-Native drawing observation (tools/native_drawing_audit.py): the host's drawing view watches 22 instructions of this module (twelve entries,
-which the generated page observes before its hook, and ten "exit" instructions inside the pixel primitives and the text drawer). A routed
-routine must run native_drawing_boundary at each interior one itself; rewritten() refuses a routed entry that holds one inside its body
-unless OBSERVES_INTERIOR names it, so a block that routes those keeps the observation.
+Host observation (tools/host_observed.py): the host's drawing view watches 22 instructions of this module (tools/native_drawing_audit.py: twelve
+entries, which the generated page observes before its hook, and ten "exit" instructions inside the pixel primitives and the text drawer), its adaptive
+layout patches 21 (tools/adaptive_gui_audit.py: the message panel's 17, the ellipse's two, the assertion box's one) and the profiler marks three of the
+message panel. A routed routine must pass each interior one itself: rewritten() refuses a routed entry holding a host-observed address that HANDLED_POINTS
+does not list for it (the entry's own address is the page's: the generator keeps such an entry out of the in-place owner table), and the index check
+refuses a routed entry that calls a host-observed entry HANDLED_CALLS does not list. The checkers' boundary logs (native/native_drawing_log.hpp) compare
+what the host reads at each point and what its adaptive hook is asked and answers, on the original canvas and a wider one (CM_GUI_CANVAS).
 
 Stack contract (tools/stack_contract.py module graph_carbon.cpp): twelve routines are leavers (LEAVERS: entry -> first saved register);
 0x1076b6e0 reads stale stack (its own zero tests), so a rewrite of a leaver keeps the leavers' frames and held registers.
@@ -47,6 +50,7 @@ set; COMPLETE makes the generator refuse anything less than every owned routine 
 import re
 from pathlib import Path
 
+from host_observed import require_calls_handled, require_handled
 from tactics_audit import digest, routine_records
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -143,16 +147,38 @@ def routine_lines(path=INCLUDES):
                           if (path.parent / name).exists())
 
 
-# Routed entries whose C++ runs native_drawing_boundary at each observation point inside the body itself (none yet: a block that
-# routes one of the pixel primitives or the text drawer adds its entry here, with the check that the observer still sees every point).
-OBSERVES_INTERIOR = frozenset({0x1076ca50, 0x10769460, 0x1076b020, 0x1076b140})  # text: draw_text runs native_drawing_boundary at 0x1076d194 itself; remap: fade_rectangle at 0x107696cc and 0x107697b0; colours: capture_rectangle at 0x1076b138, blit_bitmap at 0x1076b234
-OBSERVES_INTERIOR |= frozenset({0x107697c0, 0x10769980, 0x1076a140, 0x1076a580, 0x1076ad50})  # pixels: the exits 0x107698c4, 0x10769b48, 0x1076a570, 0x1076a784 and 0x1076b014 run native_drawing_boundary in graph_carbon_fills.cpp / graph_carbon_lines.cpp (their typed calls into 0x1076a140 run its entry's too)
-
-
-# Routed entries whose C++ passes the profiling markers inside the body itself (tools/profiling_boundaries.py: the message panel's "Progress submit" at
-# 0x1076e7a4 and "Progress draw end" at 0x1076e7bc; the page emits the entry's marker before the hook). Such an entry is also kept out of the in-place
-# owner table (compile_recomp.owner_entries_in_place), which would skip the page's marker.
-PROFILES_INTERIOR = frozenset({0x1076e5f0})
+# Host-observed instructions a routed entry's body holds that its C++ (or every caller of the entry) passes (tools/host_observed.py):
+# entry -> addresses. An entry's own address is handled by the generated page (it runs the host's code before the owner hook, and the
+# generator keeps the entry out of the in-place owner table); the others are passed by the C++ itself. A routed entry holding any
+# address missing here is refused (rewritten()); a draft is not checked: the game runs the original for it.
+# drawing boundaries (tools/native_drawing_audit.py): text: draw_text runs native_drawing_boundary at 0x1076d194 itself; remap:
+# fade_rectangle at 0x107696cc and 0x107697b0; colours: capture_rectangle at 0x1076b138, blit_bitmap at 0x1076b234; pixels: the exits
+# 0x107698c4, 0x10769b48, 0x1076a570, 0x1076a784 and 0x1076b014 in graph_carbon_fills.cpp / graph_carbon_lines.cpp.
+HANDLED_POINTS = {
+    0x10769460: frozenset({0x10769460, 0x107696cc, 0x107697b0}), 0x107697c0: frozenset({0x107697c0, 0x107698c4}),
+    0x10769980: frozenset({0x10769980, 0x10769b48}), 0x1076a140: frozenset({0x1076a140, 0x1076a570}),
+    0x1076a580: frozenset({0x1076a580, 0x1076a784}), 0x1076b020: frozenset({0x1076b020, 0x1076b138}),
+    0x1076b140: frozenset({0x1076b140, 0x1076b234}), 0x1076b7e0: frozenset({0x1076b7e0}), 0x1076c0b0: frozenset({0x1076c0b0}),
+    0x1076c980: frozenset({0x1076c980}), 0x1076ca50: frozenset({0x1076ca50, 0x1076d194}),
+    # The ellipse passes its drawing exit itself and the adaptive canvas width at the two `li` that load the table's unset left edge
+    # (0x1076add4, 0x1076ae34: the host's hook, graph_carbon_lines.cpp `loaded`).
+    0x1076ad50: frozenset({0x1076ad50, 0x1076add4, 0x1076ae34, 0x1076b014}),
+    # The assertion box takes the room beside its panel from the adaptive hook at the `subfic` 0x10769c40 (graph_carbon_box.cpp).
+    0x10769b60: frozenset({0x10769c40}),
+    # The message panel passes the profiling markers inside (0x1076e7a4, 0x1076e7bc; the page emits the entry's) and calls the adaptive hook at
+    # its 17 `li` (the bottom bar: graph_carbon_text_panel.cpp `loaded`).
+    0x1076e5f0: frozenset({0x1076e5f0, 0x1076e6c0, 0x1076e6c4, 0x1076e6c8, 0x1076e6f8, 0x1076e704, 0x1076e71c, 0x1076e720, 0x1076e724, 0x1076e738,
+                           0x1076e748, 0x1076e750, 0x1076e778, 0x1076e77c, 0x1076e784, 0x1076e798, 0x1076e79c, 0x1076e7a0, 0x1076e7a4, 0x1076e7bc}),
+}
+# Host-observed entries a routed entry calls, and how that stays right: through c.call the page's point runs; a typed call passes the
+# point itself (the checker's boundary log compares the points seen on both sides, once per call).
+HANDLED_CALLS = {
+    0x10768820: frozenset({0x1076a580}), 0x107692f0: frozenset({0x107697c0}), 0x10769460: frozenset({0x1076b020, 0x1076b7e0}),
+    0x1076a580: frozenset({0x1076a140}), 0x1076bbf0: frozenset({0x1076c0b0}), 0x1076c050: frozenset({0x1076c980}),
+    0x1076c0b0: frozenset({0x1076c980}), 0x1076ca50: frozenset({0x1074f800, 0x1076a140}),
+    0x1076d6e0: frozenset({0x10769980, 0x1076ad50, 0x1076a580, 0x1076a140}), 0x1076e160: frozenset({0x1076ca50}),
+    0x10769b60: frozenset({0x1076b020, 0x1076b140, 0x1076b7e0}), 0x1076ad50: frozenset({0x1076a140}), 0x1076e5f0: frozenset({0x1076a580}),
+}
 
 
 def profiled_inside(entry, end):
@@ -170,29 +196,26 @@ def observed_inside(entry, end):
 def rewritten(path=INCLUDES, drafts=False):
     """(entry, end, digest) of each routine whose C++ is verified and routed (GRAPH_CARBON_ROUTINE), with drafts also the
     GRAPH_CARBON_DRAFT ones, which only check tools run."""
-    found = sorted((int(entry, 16), int(end, 16), digest) for stage, entry, end, _, digest in
+    found = sorted((int(entry, 16), int(end, 16), digest, stage) for stage, entry, end, _, digest in
                    ROUTINE.findall(routine_lines(path)) if drafts or stage == "ROUTINE")
     bounds = dict(ROUTINES)
-    for entry, end, _ in found:
+    for entry, end, _, stage in found:
         if bounds.get(entry) != end:
             raise ValueError(f"graph_carbon_routines.inc: {entry:x}-{end:x} is not a routine of graph_carbon.cpp")
         if entry in OTHER_AUDIT:
             raise ValueError(f"graph_carbon_routines.inc: {entry:x} belongs to {OTHER_AUDIT[entry]}")
-        if (inside := observed_inside(entry, end)) and entry not in OBSERVES_INTERIOR:
-            raise ValueError(f"graph_carbon_routines.inc: {entry:x} holds native drawing observation points "
-                             f"{[hex(a) for a in inside]} its C++ would skip")
-        if (inside := profiled_inside(entry, end)) and entry not in PROFILES_INTERIOR:
-            raise ValueError(f"graph_carbon_routines.inc: {entry:x} holds profiling markers {[hex(a) for a in inside]} its C++ would skip")
-    if len({entry for entry, _, _ in found}) != len(found):
+        if stage == "ROUTINE":
+            require_handled("graph_carbon_routines.inc", entry, end, HANDLED_POINTS)
+    if len({entry for entry, _, _, _ in found}) != len(found):
         raise ValueError("A graph_carbon.cpp routine is listed twice")
-    return found
+    return [(entry, end, digest) for entry, end, digest, _ in found]
 
 
 GRAPH_CARBON_ENTRIES = tuple(entry for entry, _ in ROUTINES)
 GRAPH_CARBON_HOOKED = tuple(entry for entry, _, _ in rewritten(drafts=True))
 
 # The generator requires every owned entry routed (GRAPH_CARBON_ROUTINE): all 54 are.
-COMPLETE = False  # drafts again since 2026-11-23: routines the host's HD drawing observes inside (see the .inc notes)
+COMPLETE = True  # the three routines the host's HD drawing and adaptive layout observe inside were drafts 2026-11-23 and are routed again (HANDLED_POINTS)
 
 
 def require_graph_carbon_index(db, path=INCLUDES, complete=None):
@@ -201,6 +224,8 @@ def require_graph_carbon_index(db, path=INCLUDES, complete=None):
     registered = rewritten(path, drafts=True)
     if complete and tuple(entry for entry, _, _ in rewritten(path)) != OWNED:
         raise ValueError(f"graph_carbon.cpp requires all {len(OWNED)} complete production entries")
+    for entry, end, _ in rewritten(path):
+        require_calls_handled("graph_carbon_routines.inc", db, entry, end, HANDLED_CALLS)
     for entry, end, expected in registered:
         body = routine_records(db, entry, end)
         if [r['address'] for r in body] != [a for a in range(entry, end, 4) if a not in UNREACHABLE]:

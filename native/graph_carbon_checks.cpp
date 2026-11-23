@@ -17,6 +17,8 @@
 #include "guest_abi.hpp"
 #include "graph_carbon_adapter.hpp"
 #include "match_replay.hpp"
+#include "adaptive_gui.hpp"
+#include "native_drawing_log.hpp"
 #include "match_turbo.hpp"
 #include "routine_check.hpp"
 #include "allocator_adapter.hpp"
@@ -227,6 +229,7 @@ namespace {
 constexpr std::uint32_t boundary_log = scratch_base + 0xd0000, boundary_stride = 32, boundary_capacity = 400;
 std::uint32_t boundary_entry = 0;
 bool boundary_first = true;
+void log_event(State& s, const std::vector<std::uint32_t>& words);
 void record_boundary(State& s, std::uint32_t pc) {
     if (boundary_first) {
         boundary_first = false;
@@ -245,19 +248,56 @@ void record_boundary(State& s, std::uint32_t pc) {
     } else {
         for (unsigned n = 3; n <= 8; ++n) words.push_back(std::uint32_t(s.r<4>(guest::reg::gpr(n))));
     }
+    // Then everything the host's drawing view reads at this point (native/native_drawing_log.hpp, derived from NativeDrawingObserver::boundary).
+    for (const auto word : cm::aot::drawing_log::observed_words(s, pc)) words.push_back(word);
+    log_event(s, words);
+}
+void log_event(State& s, const std::vector<std::uint32_t>& words) {
     const auto count = std::uint32_t(s.memory.read<4>(boundary_log));
     auto hash = std::uint32_t(s.memory.read<4>(boundary_log + 4));
     if (!count) hash = 2166136261u;
+    hash = (hash ^ std::uint32_t(words.size())) * 16777619u;
     for (const auto word : words) hash = (hash ^ word) * 16777619u;
     if (std::getenv("CM_GRAPH_CARBON_BOUNDARY_LOG")) {
         std::fprintf(stderr, "BOUNDARY %s %u:", graph_carbon_declining ? "original" : "rewrite", count);
         for (const auto word : words) std::fprintf(stderr, " %x", word);
         std::fprintf(stderr, "\n");
     }
-    if (count < boundary_capacity)
-        for (std::size_t n = 0; n < words.size(); ++n) s.memory.write<4>(boundary_log + 8 + count * boundary_stride + 4 * std::uint32_t(n), words[n]);
+    if (count < boundary_capacity)  // the first events, as many words as the stride holds; the hash covers every word
+        for (std::size_t n = 0; n < words.size() && n < boundary_stride / 4; ++n)
+            s.memory.write<4>(boundary_log + 8 + count * boundary_stride + 4 * std::uint32_t(n), words[n]);
     s.memory.write<4>(boundary_log, count + 1);
     s.memory.write<4>(boundary_log + 4, hash);
+}
+// ---- The adaptive layout hook (tools/adaptive_gui_audit.py): each instruction the host's hook is asked about, in the same log as the drawing
+// points, so both sides must ask the same questions in the same order and get the same answers. The words: the address, whether the hook replaced
+// the instruction, the register it writes after it, its input for the one `subfic` (r4) and the carry. The canvas the hook sees is the checker's
+// (CM_GUI_CANVAS=WxH; unset: the original 800x600, where the hook never replaces).
+unsigned adaptive_destination(std::uint32_t pc) {
+    switch (pc) {
+    case 0x1076e738: return 0;
+    case 0x1076e6c0: case 0x1076e6f8: case 0x1076e71c: case 0x1076e748: case 0x1076e778: case 0x1076e798: case 0x1076ae34: return 4;
+    case 0x1076e6c4: case 0x1076e720: case 0x1076e77c: case 0x1076e79c: return 5;
+    case 0x1076e6c8: case 0x1076e704: case 0x1076e724: case 0x1076e750: case 0x1076e784: case 0x1076e7a0: return 6;
+    default: return 3;  // 0x1076add4 and 0x10769c40
+    }
+}
+void record_adaptive(State& s, std::uint32_t pc, bool replaced) {
+    const auto reg = [&](unsigned n) { return std::uint32_t(s.r<4>(guest::reg::gpr(n))); };
+    std::vector<std::uint32_t> words{0xad000000u | (pc & 0xffffff), replaced ? 1u : 0u, replaced ? reg(adaptive_destination(pc)) : 0u,
+                                     pc == 0x10769c40 ? reg(4) : 0u, replaced && pc == 0x10769c40 ? std::uint32_t(s.r<1>(guest::reg::xer_ca)) : 0u};
+    log_event(s, words);
+}
+cm::aot::GuiCanvas checker_canvas{};
+cm::aot::GuiCanvas checker_canvas_probe(const State&) { return checker_canvas; }
+void install_adaptive_probes() {
+    if (const char* text = std::getenv("CM_GUI_CANVAS")) {
+        unsigned width = 800, height = 600;
+        std::sscanf(text, "%ux%u", &width, &height);
+        checker_canvas = cm::aot::bounded_gui_canvas(int(width), int(height));
+        cm::aot::adaptive_gui_canvas_probe = checker_canvas_probe;
+    }
+    cm::aot::adaptive_gui_instruction_probe = record_adaptive;
 }
 }
 namespace cm::aot { extern bool (*graph_carbon_original_answer)(State&, std::uint32_t); extern void (*graph_carbon_leaver_probe)(State&, std::uint32_t); extern void (*native_scope_probe)(State&, std::uint32_t); }
@@ -279,6 +319,7 @@ void install_leaver_check(State& s) {
     native_scope_probe = record_scope;
     boundary_first = true;
     native_drawing_boundary_probe = record_boundary;
+    install_adaptive_probes();
 }
 }
 namespace {

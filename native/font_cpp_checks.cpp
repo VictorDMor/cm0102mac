@@ -19,6 +19,7 @@
 #include "match_replay.hpp"
 #include "match_turbo.hpp"
 #include "routine_check.hpp"
+#include "native_drawing_log.hpp"
 #include "allocator_adapter.hpp"
 #include "cpp_object_storage_adapter.hpp"
 #include "stream_io_adapter.hpp"
@@ -216,6 +217,42 @@ void record_original(State& s, std::uint32_t entry) { record_leaver(s, entry, tr
 // A case that answers a leaver: neither side runs its body, so the entry is recorded where the answer is given (the same entry state).
 void record_answered(State& s) { record_leaver(s, s.pc, font_cpp_declining); }
 }
+// ---- The native drawing boundary log: the observation points of tools/native_drawing_audit.py that a run passes (the generated pages' at the
+// observed entries, the C++'s own at the interior points). The host's drawing view (native/native_drawing.cpp) reads registers, stack words and
+// memory at each, so both sides must pass the same points in the same order with the same observed state (native/native_drawing_log.hpp lists,
+// per address, what the observer reads). The checked entry's own observation is the generated page's, before its hook: only the original's
+// run passes it, so it is left out. The log is in the scratch area (count, an FNV hash of every event, the first events), where the memory
+// comparison sees a difference; CM_FONT_CPP_BOUNDARY_LOG=1 prints the events of a child.
+namespace {
+constexpr std::uint32_t boundary_log = scratch_base + 0xd0000, boundary_stride = 32, boundary_capacity = 400;
+std::uint32_t boundary_entry = 0;
+bool boundary_first = true;
+void record_boundary(State& s, std::uint32_t pc) {
+    if (boundary_first) {
+        boundary_first = false;
+        if (font_cpp_declining && pc == boundary_entry) return;
+    }
+    std::vector<std::uint32_t> words{pc, std::uint32_t(s.r<4>(guest::reg::gpr(1)))};
+    for (unsigned n = 3; n <= 8; ++n) words.push_back(std::uint32_t(s.r<4>(guest::reg::gpr(n))));
+    for (const auto word : cm::aot::drawing_log::observed_words(s, pc)) words.push_back(word);
+    const auto count = std::uint32_t(s.memory.read<4>(boundary_log));
+    auto hash = std::uint32_t(s.memory.read<4>(boundary_log + 4));
+    if (!count) hash = 2166136261u;
+    hash = (hash ^ std::uint32_t(words.size())) * 16777619u;
+    for (const auto word : words) hash = (hash ^ word) * 16777619u;
+    if (std::getenv("CM_FONT_CPP_BOUNDARY_LOG")) {
+        std::fprintf(stderr, "BOUNDARY %s %u:", font_cpp_declining ? "original" : "rewrite", count);
+        for (const auto word : words) std::fprintf(stderr, " %x", word);
+        std::fprintf(stderr, "\n");
+    }
+    if (count < boundary_capacity)  // the first events, as many words as the stride holds; the hash covers every word
+        for (std::size_t n = 0; n < words.size() && n < boundary_stride / 4; ++n)
+            s.memory.write<4>(boundary_log + 8 + count * boundary_stride + 4 * std::uint32_t(n), words[n]);
+    s.memory.write<4>(boundary_log, count + 1);
+    s.memory.write<4>(boundary_log + 4, hash);
+}
+}
+namespace cm::aot { extern void (*native_drawing_boundary_probe)(State&, std::uint32_t); }
 namespace cm::aot { extern void (*font_cpp_leaver_probe)(State&, std::uint32_t); extern void (*native_scope_probe)(State&, std::uint32_t); }
 namespace cm::aot::font_cpp_checks {
 // A run's start (the checked entry's stack pointer): the check's origin. Also called by the end-to-end sweeps.
@@ -225,6 +262,8 @@ void install_leaver_check(State& s) {
     last_leaver_executed = ~std::uint64_t(0);
     font_cpp_leaver_probe = record_original;
     native_scope_probe = record_scope;
+    boundary_first = true;
+    native_drawing_boundary_probe = record_boundary;
 }
 }
 namespace {
@@ -248,6 +287,7 @@ void prepare_case(State& s) {
 }
 void bounded_original(State& s, std::uint32_t entry) {
     prepare_case(s);
+    boundary_entry = entry;
     font_cpp_checks::install_leaver_check(s);
     alarm(run_alarm); s.budget = s.executed + 4'000'000'000ULL; font_cpp_run_original(s, entry);
     verify_run(s, "original");
@@ -255,6 +295,7 @@ void bounded_original(State& s, std::uint32_t entry) {
 }
 void bounded_rewrite(State& s, std::uint32_t entry) {
     prepare_case(s);
+    boundary_entry = entry;
     font_cpp_checks::install_leaver_check(s);
     alarm(run_alarm);
     s.budget = s.executed + 4'000'000'000ULL;

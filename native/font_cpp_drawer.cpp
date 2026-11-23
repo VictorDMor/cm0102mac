@@ -17,16 +17,26 @@
 // glyph cache, the assertion reporter and the callback's glue) are called at the original's stack pointer with r13-r31 as the original
 // holds them (the leaver check compares the saved registers of every entry into 0x1074f800 and the glyph cache and selector).
 //
+// HOST OBSERVATION (tools/native_drawing_audit.py). The host's HD text layer watches four instructions of this routine and the page runs
+// the first one only for a caller that reaches the entry through its page: 0x1074f800 (the entry: the recursive outline call passes it
+// itself, with r3-r10 as the original's `bl` leaves them), 0x1074fb58 (a glyph inside the window, after the clipping: r0 the pen's whole x,
+// r4 y, r5 r7 r8 r10 the clipped rectangle, r30 the glyph record, r31 the string index, the text at sp + 0xd4), 0x107500b4 (the end of
+// every character) and 0x107500e8 (the `blr`, after the epilogue). They are passed here, in the original's order, with those registers
+// in the guest state (the checker's boundary log compares everything the observer reads: native/native_drawing_log.hpp).
+//
 // REGISTERS. r3-r10 are as the original leaves them on every path: the glyph rectangle's clipping and the three pixel loops leave
 // their counters and last pixel's temporaries in r3-r10 (derived from the listing, loop by loop). Not reproduced: r14-r20 inside the
 // glyph loop (the pixel loops use them as temporaries; no callee reads them: the glyph cache saves r23-r31 only and the epilogue
 // restores them) and the diagnostic registers r0, r11 and r12 (r12 holds the callback at its glue call).
 #include "font_cpp_detail.hpp"
+#include "native_drawing.hpp"
 #include <algorithm>
 
 namespace cm::aot::font_cpp {
 namespace {
 constexpr std::uint32_t entry = 0x1074f800, frame_size = 0xa0;
+// The instructions the host observes (see above).
+constexpr std::uint32_t glyph_point = 0x1074fb58, character_end = 0x107500b4, return_point = 0x107500e8;
 // Routines of other modules or blocks, called as the original calls them (generated, or C++ called through the dispatcher).
 constexpr std::uint32_t assertion_report = 0x107755c0, select_style_entry = 0x10750320, glyph_record_entry = 0x10750580, callback_glue = 0x10781320;
 // The address after each `bl` of the original.
@@ -238,7 +248,7 @@ struct Run {
 };
 
 // 0x1074fa94..0x107500b4: one glyph's rectangle clipped to the window and painted. Every path leaves r3-r10 as the original does.
-void paint_glyph(Cpu& c, Run& run, std::uint32_t glyph, std::uint32_t pen_x) {
+void paint_glyph(Cpu& c, Run& run, std::uint32_t glyph, std::uint32_t pen_x, std::uint32_t index) {
     const auto window = run.window;
     const auto left = c.u32(glyph + glyph_fields::left), top = c.u32(glyph + glyph_fields::top), width = c.u32(glyph + glyph_fields::width),
                height = c.u32(glyph + glyph_fields::height);
@@ -268,6 +278,10 @@ void paint_glyph(Cpu& c, Run& run, std::uint32_t glyph, std::uint32_t pen_x) {
     if (y0 < 0) r5 = 0;
     if (x1 >= window_width) r3 = std::uint32_t(window_width - 1), r7 = std::uint32_t(sext16(r3));
     if (y1 >= window_height) r3 = std::uint32_t(window_height - 1), r10 = std::uint32_t(sext16(r3));
+
+    // 0x1074fb58: the glyph is inside the window. The host's text layer reads the clipped rectangle, the glyph record and the string index.
+    c.set({{0, std::uint32_t(x0)}, {3, r3}, {4, r4}, {5, r5}, {6, r6}, {7, r7}, {8, r8}, {9, r9}, {10, r10}, {30, glyph}, {31, index}});
+    native_drawing_boundary(c.s, glyph_point);
 
     // The clipped rectangle's first bitmap byte and surface pixel.
     const auto row_bytes = c.u32(glyph + glyph_fields::row_bytes);
@@ -311,6 +325,8 @@ std::uint32_t draw_text(Cpu& c, const TextRequest& q) {
     if (record == 0) report(c, pool, assertion::font_text, assertion::font_line, back::font_assertion);
     if (c.u8(record + font_fields::loaded) == 0) {
         c.set(3, 0);
+        frame.leave();
+        native_drawing_boundary(c.s, return_point);
         return 0;
     }
     if (q.window == 0) report(c, pool, assertion::window_text, assertion::window_line, back::window_assertion);
@@ -329,6 +345,7 @@ std::uint32_t draw_text(Cpu& c, const TextRequest& q) {
         const auto text = c.u32(caller + slot::text);
         c.set({{3, c.u32(caller + slot::font)}, {4, q.window}, {5, q.x}, {6, q.y}, {7, (flags | 0x50) & 0xffff}, {8, size}, {9, 0}, {10, text}});
         c.link(back::shadow);
+        native_drawing_boundary(c.s, entry);  // the original's `bl` runs the page's observation of the entry
         draw_text(c, {q.font_slot, q.window, q.x, q.y, (flags | 0x50) & 0xffff, size, 0, text});
     } else {
         c.set({{3, c.u32(caller + slot::font)}, {4, flags}, {5, c.u8(caller + slot::size)}});
@@ -379,6 +396,8 @@ std::uint32_t draw_text(Cpu& c, const TextRequest& q) {
                 call_callback(x, x, back::final_callback, held_glyph);
             }
             c.set(3, 1);
+            frame.leave();
+            native_drawing_boundary(c.s, return_point);
             return 1;
         }
         c.set(3, character);
@@ -399,8 +418,9 @@ std::uint32_t draw_text(Cpu& c, const TextRequest& q) {
                 call_callback(left, right, back::glyph_callback, held_glyph);
                 skip = std::int8_t(c.r(3)) != 0;
             }
-            if (!skip) paint_glyph(c, run, held_glyph, pen_x);
+            if (!skip) paint_glyph(c, run, held_glyph, pen_x, index);
         }
+        native_drawing_boundary(c.s, character_end);
         ++index;
         pen_x += held_glyph ? c.u32(held_glyph + glyph_fields::advance) : 0;
     }

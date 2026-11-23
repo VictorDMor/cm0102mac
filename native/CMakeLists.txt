@@ -4825,6 +4825,11 @@ if(EXISTS "${CM_ORACLE_DIR}/program.json" AND EXISTS "${CM_BENCHMARK_DIR}/ui/sav
              --argument-masks "${CMAKE_CURRENT_SOURCE_DIR}/graph_carbon_argument_masks.txt" --require-all)
     add_test(NAME graph_carbon_production COMMAND cm-graph-carbon-checks ${CM_GRAPH_CARBON_INPUTS} --production)
     set_tests_properties(graph_carbon_equivalence graph_carbon_production PROPERTIES ENVIRONMENT "CM_ENGLISH_RULES_ORIGINAL=1")
+    # The same comparison on a wider canvas: the host's adaptive layout hook (tools/adaptive_gui_audit.py) answers at the message panel, the ellipse and the
+    # assertion box, and the checker's boundary log compares each question and answer (CM_GUI_CANVAS stands in for the platform's canvas).
+    add_test(NAME graph_carbon_adaptive COMMAND cm-graph-carbon-checks ${CM_GRAPH_CARBON_INPUTS} --mutate 2 --call-trace
+             --argument-masks "${CMAKE_CURRENT_SOURCE_DIR}/graph_carbon_argument_masks.txt" --require-all)
+    set_tests_properties(graph_carbon_adaptive PROPERTIES ENVIRONMENT "CM_ENGLISH_RULES_ORIGINAL=1;CM_GUI_CANVAS=1280x800")
 endif()
 option(CM_GRAPH_CARBON_COVERAGE "Instrument the graph_carbon.cpp checker only" OFF)
 if(CM_GRAPH_CARBON_COVERAGE)

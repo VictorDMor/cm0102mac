@@ -2,6 +2,7 @@
 // graph_carbon.cpp's record views and constants (tools/graph_carbon_audit.py, .local/rewrites/graph_carbon/brief.md). Offsets come from
 // the listing and the decompilation; "?" marks one inferred from a single reader.
 #include "graph_carbon.hpp"
+#include "adaptive_gui.hpp"
 #include "graph_carbon_adapter.hpp"
 #include "guest_values.hpp"
 
@@ -22,6 +23,18 @@ inline constexpr std::int32_t current_cursor = -0x3580,  // byte: the index of t
 }
 // The address of a small-data variable.
 inline std::uint32_t small(const Cpu& c, std::int32_t offset) { return c.r(2) + std::uint32_t(offset); }
+
+// An instruction the host's adaptive layout replaces (tools/adaptive_gui_audit.py ADAPTIVE_GUI_INSTRUCTIONS): the generated page calls
+// adaptive_gui_instruction(s, pc) in place of it and, when the hook declines (the original canvas), runs the instruction. The C++ calls the
+// same hook with the registers the instruction reads in the guest state, and when it declines does what the instruction does: `li reg,value`
+// here. Returns the register after the instruction. The hook steps the instruction counter and so moves the PC; the PC is put back.
+inline std::uint32_t loaded(Cpu& c, std::uint32_t pc, unsigned reg, std::uint32_t original) {
+    const auto at = c.s.pc;
+    const bool replaced = adaptive_gui_instruction(c.s, pc);
+    c.s.pc = at;
+    if (!replaced) c.set(reg, original);
+    return c.r(reg);
+}
 
 // A Mac Rect in guest memory (QuickDraw): four signed halfwords.
 struct Rect {

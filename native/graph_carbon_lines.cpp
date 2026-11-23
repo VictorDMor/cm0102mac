@@ -274,12 +274,14 @@ void draw_ellipse(Cpu& c, const LineArguments& e) {
                     v.r4 = 0;
                     const std::uint32_t blocks = (v.r3 + 7) >> 3;
                     if (std::int32_t(v.r3) > 0) {
-                        v.r3 = unset_left;
+                        // `li r3,0x320` (0x1076add4): the table's "unset" left edge, which the host's adaptive layout makes the canvas width.
+                        const auto unset = loaded(c, 0x1076add4, 3, unset_left);
+                        v.r3 = unset;
                         for (std::uint32_t n = 0; n < blocks; ++n) {
                             v.r5 = table + v.r4;
                             v.r4 += 0x40;
                             for (std::uint32_t k = 0; k < 8; ++k) {
-                                c.put32(v.r5 + k * entry_size + span::left, unset_left);
+                                c.put32(v.r5 + k * entry_size + span::left, unset);
                                 c.put32(v.r5 + k * entry_size + span::right, unset_right);
                             }
                             v.r6 += 8;
@@ -287,14 +289,14 @@ void draw_ellipse(Cpu& c, const LineArguments& e) {
                     }
                 }
                 v.r5 = v.r6 << 3;
-                v.r4 = unset_left;
+                v.r4 = loaded(c, 0x1076ae34, 4, unset_left);  // `li r4,0x320` (0x1076ae34), adaptive as the one above
                 v.r3 = 0;
                 if (std::int32_t(v.r6) < std::int32_t(rows)) {
                     const std::uint32_t remaining = rows - v.r6;
                     for (std::uint32_t n = 0; n < remaining; ++n) {
                         v.r6 = table + v.r5;
                         v.r5 += entry_size;
-                        c.put32(v.r6 + span::left, unset_left);
+                        c.put32(v.r6 + span::left, v.r4);
                         c.put32(v.r6 + span::right, unset_right);
                     }
                 }

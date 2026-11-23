@@ -184,6 +184,22 @@ A routine is done
 when its checks pass on every capture that reaches it, including the error
 paths someone can reach in play.
 
+## Instructions the host observes (2026-11-23)
+
+The host draws text and shapes in HD and resizes parts of the GUI by running its own code at specific original instructions while the generated pages
+execute them (`tools/host_observed.py` lists them: `NATIVE_DRAWING_BOUNDARIES`, `ADAPTIVE_GUI_INSTRUCTIONS`, `PROFILE_BOUNDARIES`, the capture
+hooks, the host sources that compare the PC, the generator's `SPECIAL_LOWERINGS`). A routine whose body holds one skips it when its C++ replaces the
+body: HD text and the adaptive bottom bar were lost this way, and no equivalence check sees it (they compare the guest, not what the host draws).
+Rules for a routed entry: every host-observed address inside it is listed in its audit's `HANDLED_POINTS`, which says its C++ passes the point
+itself (`native_drawing_boundary(c.s, pc)` with the registers and memory the observer reads in the guest state; `adaptive_gui_instruction(c.s, pc)`
+for an adaptive instruction, the same hook the page calls, then the original instruction if it declines) or, for the entry's own address, that
+every caller reaches the entry through its page (the generator keeps such an entry out of the in-place owner table); every host-observed entry it
+calls is listed in `HANDLED_CALLS` (a typed C++ call skips the page's point: pass it, or call through the dispatcher with `c.call`). The audits
+refuse the rest. The checkers log every point and what the observer reads there (`native/native_drawing_log.hpp`, derived from
+`NativeDrawingObserver::boundary`; the adaptive hook's questions and answers too) and compare the two sides; the adaptive hook sees the checker's
+canvas (`CM_GUI_CANVAS=WxH`; `graph_carbon_adaptive` runs the whole comparison on 1280x800). `python3 tools/host_observed.py scan INVENTORY.json`
+lists the host points inside every owned routine and the owned routines that call host-observed entries.
+
 ## MAIN.CPP: start-up, the event loop and paths no capture reaches
 
 `MAIN.CPP` (44 routines, `tools/main_program_audit.py`, `native/main_program_*`)

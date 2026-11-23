@@ -28,6 +28,7 @@ Nothing reads 0x107755c0's frame; it is compared exactly as well, for it hands i
 import re
 from pathlib import Path
 
+from host_observed import require_calls_handled, require_handled
 from tactics_audit import digest, routine_records
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -53,18 +54,25 @@ def routine_lines(path=INCLUDES):
                           if (path.parent / name).exists())
 
 
+# Neither routine holds a host-observed instruction.
+HANDLED_POINTS = {}  # entry -> host-observed addresses its C++ (or the page, at the entry) passes; see tools/host_observed.py
+HANDLED_CALLS = {}  # entry -> host-observed entries it calls that stay right (c.call, or a typed call passing the point)
+
+
 def rewritten(path=INCLUDES, drafts=False):
     """(entry, end, digest) of each routine whose C++ is verified and routed (ASSERTION_ROUTINE), with drafts also the ASSERTION_DRAFT
     ones, which only check tools run."""
-    found = sorted((int(entry, 16), int(end, 16), digest) for stage, entry, end, _, digest in
+    found = sorted((int(entry, 16), int(end, 16), digest, stage) for stage, entry, end, _, digest in
                    ROUTINE.findall(routine_lines(path)) if drafts or stage == "ROUTINE")
     bounds = dict(ROUTINES)
-    for entry, end, _ in found:
+    for entry, end, _, stage in found:
         if bounds.get(entry) != end:
             raise ValueError(f"assertion_routines.inc: {entry:x}-{end:x} is not a routine of the assertion module")
-    if len({entry for entry, _, _ in found}) != len(found):
+        if stage == "ROUTINE":
+            require_handled("assertion_routines.inc", entry, end, HANDLED_POINTS)
+    if len({entry for entry, _, _, _ in found}) != len(found):
         raise ValueError("An assertion routine is listed twice")
-    return found
+    return [(entry, end, digest) for entry, end, digest, _ in found]
 
 
 ASSERTION_ENTRIES = ENTRIES
@@ -80,6 +88,8 @@ def require_assertion_index(db, path=INCLUDES, complete=None):
     registered = rewritten(path, drafts=True)
     if complete and tuple(entry for entry, _, _ in rewritten(path)) != ENTRIES:
         raise ValueError(f"the assertion module requires all {len(ENTRIES)} complete production entries")
+    for entry, end, _ in rewritten(path):
+        require_calls_handled("assertion_routines.inc", db, entry, end, HANDLED_CALLS)
     for entry, end, expected in registered:
         body = routine_records(db, entry, end)
         if [r['address'] for r in body] != [a for a in range(entry, end, 4) if a not in UNREACHABLE]:

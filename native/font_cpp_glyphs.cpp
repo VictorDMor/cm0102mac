@@ -12,12 +12,18 @@
 //
 // The engine's render and purge are called through the dispatcher (as the selector's calls are: font_cpp_selector.cpp says why).
 //
+// Host observation (tools/native_drawing_audit.py): the glyph cache's entry 0x10750580 is observed by the page of every caller that reaches
+// it through the dispatcher (the drawer does); the string width's typed call below passes it itself. The two points inside are passed here:
+// 0x10750740 (the `bl` of the engine's render, with its arguments in place) and 0x107509f0 (the `blr`, after the epilogue, with the record
+// in r3).
+//
 // Both are stack-contract leavers (stmw r23 / r26): the frames are the original's (0x70 and 0x50, the saved registers, the link register).
 // Each call is made with the registers the original holds there. The original's r3-r12 and r23-r31 live in `g` by register number, written
 // where the original writes the register (the smoothing loops reuse r23-r28 as temporaries, and a callee's prologue saves them), put in
 // the machine's registers before each call and read back after it (a callee leaves r4-r10 as it leaves them, and the original's later
 // reads of them, and the registers compared at return, are those).
 #include "font_cpp_detail.hpp"
+#include "native_drawing.hpp"
 #include <array>
 
 namespace cm::aot::font_cpp {
@@ -30,6 +36,8 @@ constexpr std::uint32_t assertion_report = 0x107755c0, release_object = 0x107736
 constexpr std::uint32_t file_name = 0x12, null_font = 0xd, engine_error = 0x5a, width_null_text = 0x7c, cache_resize_failed = 0x83,
                         record_failed = 0x8f, bitmap_failed = 0x95;
 constexpr std::int32_t error_word = 0x38;
+// The instructions the host observes (see the header comment).
+constexpr std::uint32_t cache_entry = 0x10750580, render_point = 0x10750740, cache_return = 0x107509f0;
 
 constexpr std::int32_t s32(std::uint32_t v) { return std::int32_t(v); }
 constexpr std::uint32_t half(std::uint32_t v) { return std::uint32_t(std::int32_t(std::int16_t(v))); }  // extsh
@@ -94,6 +102,8 @@ std::uint32_t glyph_record(Cpu& c, std::uint32_t slot, std::uint32_t style, std:
     g[7] = 0;
     const auto finish = [&](std::uint32_t record) {
         for (unsigned n = 3; n <= 10; ++n) c.set(n, g[n]);
+        frame.leave();
+        native_drawing_boundary(c.s, cache_return);
         return record;
     };
 
@@ -149,7 +159,10 @@ std::uint32_t glyph_record(Cpu& c, std::uint32_t slot, std::uint32_t style, std:
     c.put32(g[3], g[29]);
     g[6] = 0, g[7] = 5, g[8] = 2;
     g[3] = c.u32(g[30] + font_record::scaler);
-    call(c, g, render_character_entry, 0x10750744);
+    hold(c, g);
+    native_drawing_boundary(c.s, render_point);
+    c.call(render_character_entry, 0x10750744);
+    settle(c, g);
     if (c.u32(local(error_word)) != 0) report(c, g, pool, engine_error, 0x4b8, 0x10750760);
 
     const auto scaler_field = [&](std::uint32_t offset) {
@@ -303,6 +316,7 @@ std::int32_t string_width(Cpu& c, std::uint32_t slot, std::uint32_t style, std::
         g[3] = g[28], g[4] = g[29], g[5] = g[30];
         hold(c, g);
         c.link(0x1075018c);
+        native_drawing_boundary(c.s, cache_entry);  // the original's `bl` runs the page's observation of the cache's entry
         g[3] = glyph_record(c, c.r(3), c.r(4), c.r(5), c.r(6));
         settle(c, g);
         g[4] = half(g[27]);

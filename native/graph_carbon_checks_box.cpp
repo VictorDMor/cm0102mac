@@ -49,10 +49,19 @@ struct Layout {
     std::int32_t width, left, right, ok_left, ok_right, quit_left, quit_right;
     static constexpr std::int32_t top = 0x13e, bottom = 0x156;
 };
-constexpr Layout layout(std::uint32_t answer, bool quit) {
+// The canvas the panel is centred on: the original's 800, or the checker's (CM_GUI_CANVAS=WxH, which the hook of 0x10769c40 reads: graph_carbon_checks.cpp).
+std::int32_t canvas_width() {
+    static const std::int32_t width = [] {
+        unsigned w = 800, h = 600;
+        if (const char* text = std::getenv("CM_GUI_CANVAS")) std::sscanf(text, "%ux%u", &w, &h);
+        return std::int32_t(w < 800 ? 800 : w > 3200 ? 3200 : w);
+    }();
+    return width;
+}
+Layout layout(std::uint32_t answer, bool quit) {
     const auto measured = std::int32_t(answer + 0x18);
     const std::int32_t width = measured <= 200 ? 200 : measured >= 600 ? 600 : measured;
-    const std::int32_t left = (800 - width) / 2;
+    const std::int32_t left = (canvas_width() - width) / 2;
     const std::int32_t ok_left = left + (width - (quit ? 0x8c : 0x4b)) / 2;
     return {width, left, left + width - 1, ok_left, ok_left + 0x4a, ok_left + 0x55, ok_left + 0x9f};
 }
@@ -61,21 +70,23 @@ struct Step { std::int32_t x, y; std::uint32_t button, key; };
 }
 
 
-// The real-callee group: rows 242-357 of an 800-pixel-wide 15-bit surface in scratch memory (the panel's rows), the surface variables pointing at it
+// The real-callee group: rows 242-357 of a canvas-wide (800 pixels) 15-bit surface in scratch memory (the panel's rows), the surface variables pointing at it
 // (the base is chosen so that row 242 starts at `rows_at`; the rest of the surface is never touched), filled with a pattern a restored panel must show again.
-constexpr std::uint32_t rows_at = scratch_base + 0x30000, first_row = 242, row_count = 116, row_pixels = 800;
+// The rows are as wide as the checker's canvas (CM_GUI_CANVAS, at most 1366 pixels: 116 rows of it fit below the imports log).
+constexpr std::uint32_t rows_at = scratch_base + 0x30000, first_row = 242, row_count = 116;
+std::uint32_t row_width() { return std::uint32_t(canvas_width()); }
 constexpr std::uint32_t pattern(std::uint32_t x, std::uint32_t y) { return (x * 7 + y * 13 + (x >> 3) * 5) & 0x7fff; }
 void build_rows(State& s) {
-    s.memory.write<4>(slot(text_small::surface), rows_at - first_row * row_pixels * 2);
-    s.memory.write<2>(slot(text_small::stride), row_pixels);
-    s.memory.write<2>(slot(text_small::row_bytes), row_pixels * 2);
+    s.memory.write<4>(slot(text_small::surface), rows_at - first_row * row_width() * 2);
+    s.memory.write<2>(slot(text_small::stride), row_width());
+    s.memory.write<2>(slot(text_small::row_bytes), row_width() * 2);
     for (std::uint32_t y = 0; y < row_count; ++y)
-        for (std::uint32_t x = 0; x < row_pixels; ++x) s.memory.write<2>(rows_at + (y * row_pixels + x) * 2, pattern(x, first_row + y));
+        for (std::uint32_t x = 0; x < row_width(); ++x) s.memory.write<2>(rows_at + (y * row_width() + x) * 2, pattern(x, first_row + y));
 }
 bool rows_restored(State& s) {
     for (std::uint32_t y = 0; y < row_count; ++y)
-        for (std::uint32_t x = 0; x < row_pixels; ++x)
-            if (s.memory.read<2>(rows_at + (y * row_pixels + x) * 2) != pattern(x, first_row + y)) return false;
+        for (std::uint32_t x = 0; x < row_width(); ++x)
+            if (s.memory.read<2>(rows_at + (y * row_width() + x) * 2) != pattern(x, first_row + y)) return false;
     return true;
 }
 

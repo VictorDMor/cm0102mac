@@ -259,8 +259,8 @@ class FontCppAuditTests(unittest.TestCase):
     def test_exactly_the_routed_blocks_are_routed_and_hooked_and_the_hook_checks_fail_when_they_should(self):
         from compile_recomp import OWNER_REPLACEMENTS, SEMANTIC_REPLACEMENTS, generate_page
         pinned = {a: (b, d) for a, b, _, d in CONTRACTS}
-        self.assertFalse(audit.COMPLETE)
-        DRAFTS = frozenset({0x1074f800, 0x10750580, 0x107500f0})  # the host's HD drawing observes instructions inside them
+        self.assertTrue(audit.COMPLETE)
+        DRAFTS = frozenset()  # (2026-11-23: the drawer, the glyph cache and the string width were drafts for the host's HD drawing; routed again)
         listed = audit.rewritten(drafts=True)
         for entry, end, expected in listed:
             self.assertEqual(pinned[entry], (end, expected))
@@ -280,6 +280,14 @@ class FontCppAuditTests(unittest.TestCase):
                 lines = ''.join(f'FONT_CPP_ROUTINE(0x{a:x}, 0x{b:x}, R3, "{d}", name)\n' for a, b, _, d in CONTRACTS)
                 candidate.write_text(lines)
                 audit.require_font_cpp_index(db, candidate, complete=True)
+                # The three routines the host's HD drawing observes inside or through a typed call: refused when the module stops listing what its
+                # C++ passes (tools/host_observed.py; tools/test_host_observed.py removes each listing in turn).
+                with mock.patch.object(audit, 'HANDLED_POINTS', {}):
+                    with self.assertRaisesRegex(ValueError, 'host-observed instructions'):
+                        audit.require_font_cpp_index(db, candidate, complete=True)
+                with mock.patch.object(audit, 'HANDLED_CALLS', {}):
+                    with self.assertRaisesRegex(ValueError, 'HANDLED_CALLS'):
+                        audit.require_font_cpp_index(db, candidate, complete=True)
                 candidate.write_text(lines.replace(f'FONT_CPP_ROUTINE(0x{first:x},', f'FONT_CPP_DRAFT(0x{first:x},', 1))
                 with self.assertRaisesRegex(ValueError, 'requires all 19'):
                     audit.require_font_cpp_index(db, candidate, complete=True)

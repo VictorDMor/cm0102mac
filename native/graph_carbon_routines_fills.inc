@@ -1,6 +1,6 @@
 // graph_carbon.cpp, block `fills` (graph_carbon_fills.cpp): the rectangle primitives. Every entry is compared on r3 and r4-r10 in full.
 // 0x10769980 and 0x1076a790 are leavers (stack contract); 0x107697c0, 0x10769980 and 0x1076a580 run the native drawing observation at their
-// return (graph_carbon_audit.OBSERVES_INTERIOR).
+// return (graph_carbon_audit.HANDLED_POINTS).
 GRAPH_CARBON_ROUTINE(0x107697c0, 0x107698c8, R3, "e61581f5f79439b5", [](Cpu& c) {
     graph_carbon::shade_to_grey(c, std::int32_t(c.r(3)), std::int32_t(c.r(4)), std::int32_t(c.r(5)), std::int32_t(c.r(6)));
 })

@@ -84,7 +84,18 @@ void assertion_box(Cpu& c, std::uint32_t message, std::uint32_t detail, std::uin
     c.call(callee::text_width, 0x10769c0c);
     const auto measured = std::int32_t(c.r(3) + 0x18);
     const std::int32_t width = measured < 200 ? 200 : measured < 600 ? measured : 600;
-    const std::int32_t left = (800 - width) / 2, right = left + width - 1;
+    // `subfic r3,r4,0x320` (0x10769c40): the room beside the panel, which the host's adaptive layout takes from the canvas width instead of
+    // 800. The hook reads r4 (the panel's width) and writes r3 and the carry; declined, the instruction's own result is the original's.
+    c.set(4, std::uint32_t(width));
+    const auto at = c.s.pc;
+    const bool adaptive = adaptive_gui_instruction(c.s, 0x10769c40);
+    c.s.pc = at;
+    if (!adaptive) {
+        const auto result = std::uint64_t(~std::uint32_t(width)) + 0x320u + 1;
+        c.set(3, std::uint32_t(result));
+        c.s.wr<1>(guest::reg::xer_ca, result >> 32);
+    }
+    const std::int32_t left = std::int32_t(c.r(3)) / 2, right = left + width - 1;
     const bool quit_offered = std::int8_t(offer_quit & 0xff) != 0;
     // OK sits left of centre when Quit is offered; both captions are 0x4a wide (OK) and 0x55 apart.
     const std::int32_t ok_left = quit_offered ? left + (width - 0x8c) / 2 : left + (width - 0x4b) / 2;

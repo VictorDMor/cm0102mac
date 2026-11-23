@@ -50,6 +50,7 @@ set; COMPLETE makes the generator refuse anything less than all 19 routed.
 import re
 from pathlib import Path
 
+from host_observed import require_calls_handled, require_handled
 from tactics_audit import digest, routine_records
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -109,25 +110,40 @@ def routine_lines(path=INCLUDES):
                           if (path.parent / name).exists())
 
 
+# The drawer 0x1074f800 and the glyph cache 0x10750580 hold host-observed instructions (tools/native_drawing_audit.py). The page runs each entry's
+# own observation for every caller that reaches the entry through its page (the generator keeps both out of the in-place owner table); the C++
+# passes the others itself: the drawer's 0x1074fb58 (a glyph inside the window), 0x107500b4 (the end of each character) and 0x107500e8 (the
+# `blr`), the cache's 0x10750740 (the `bl` of the engine's render) and 0x107509f0 (the `blr`).
+HANDLED_POINTS = {  # entry -> host-observed addresses its C++ (or the page, at the entry) passes; see tools/host_observed.py
+    0x1074f800: frozenset({0x1074f800, 0x1074fb58, 0x107500b4, 0x107500e8}),
+    0x10750580: frozenset({0x10750580, 0x10750740, 0x107509f0}),
+}
+# Host-observed entries a routed entry calls: the drawer's recursive call for the outline style and the string width's call of the cache are
+# typed and run the callee's entry observation themselves; the drawer's call of the cache goes through the dispatcher (c.call: the page's).
+HANDLED_CALLS = {0x1074f800: frozenset({0x1074f800, 0x10750580}), 0x107500f0: frozenset({0x10750580})}
+
+
 def rewritten(path=INCLUDES, drafts=False):
     """(entry, end, digest) of each routine whose C++ is verified and routed (FONT_CPP_ROUTINE), with drafts also the
     FONT_CPP_DRAFT ones, which only check tools run."""
-    found = sorted((int(entry, 16), int(end, 16), digest) for stage, entry, end, _, digest in
+    found = sorted((int(entry, 16), int(end, 16), digest, stage) for stage, entry, end, _, digest in
                    ROUTINE.findall(routine_lines(path)) if drafts or stage == "ROUTINE")
     bounds = dict(ROUTINES)
-    for entry, end, _ in found:
+    for entry, end, _, stage in found:
         if bounds.get(entry) != end:
             raise ValueError(f"font_cpp_routines.inc: {entry:x}-{end:x} is not a routine of FONT.CPP")
-    if len({entry for entry, _, _ in found}) != len(found):
+        if stage == "ROUTINE":
+            require_handled("font_cpp_routines.inc", entry, end, HANDLED_POINTS)
+    if len({entry for entry, _, _, _ in found}) != len(found):
         raise ValueError("A FONT.CPP routine is listed twice")
-    return found
+    return [(entry, end, digest) for entry, end, digest, _ in found]
 
 
 FONT_CPP_ENTRIES = tuple(entry for entry, _ in ROUTINES)
 FONT_CPP_HOOKED = tuple(entry for entry, _, _ in rewritten(drafts=True))
 
-# The generator requires every entry routed (FONT_CPP_ROUTINE): all 19 are.
-COMPLETE = False  # drafts again since 2026-11-23: routines the host's HD drawing observes inside (see the .inc notes)
+# The generator requires every entry routed (FONT_CPP_ROUTINE): all 19 are, and a draft or a missing line stops the generation.
+COMPLETE = True  # the three routines the host's HD drawing observes inside were drafts 2026-11-23 and are routed again (HANDLED_POINTS)
 
 
 def require_font_cpp_index(db, path=INCLUDES, complete=None):
@@ -136,6 +152,8 @@ def require_font_cpp_index(db, path=INCLUDES, complete=None):
     registered = rewritten(path, drafts=True)
     if complete and tuple((entry, end) for entry, end, _ in rewritten(path)) != ROUTINES:
         raise ValueError("FONT.CPP requires all 19 complete production entries")
+    for entry, end, _ in rewritten(path):
+        require_calls_handled("font_cpp_routines.inc", db, entry, end, HANDLED_CALLS)
     for entry, end, expected in registered:
         body = routine_records(db, entry, end)
         if [r['address'] for r in body] != [a for a in range(entry, end, 4) if a not in UNREACHABLE]:

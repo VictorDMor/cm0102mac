@@ -35,27 +35,46 @@ std::uint32_t panel_body(Cpu& c, std::uint32_t text, std::uint32_t step, std::ui
         c.set(3, c.u32(clubs + std::uint32_t(c.i16(clubs + 0x2c58)) * 0x2c0 + 0x24));
         c.call(0x10718f60, 0x1076e6b8);
     }
-    // The panel: a shaded frame, then the text and (with a total) the bar's frame and fill.
-    const auto text_box = [&](std::uint32_t right, std::uint32_t back) {
+    // The panel: a shaded frame, then the text and (with a total) the bar's frame and fill. Each coordinate below is a `li` the host's adaptive
+    // layout replaces (17 instructions, the bottom bar: tools/adaptive_gui_audit.py): `loaded` runs the hook at the original's address.
+    // `right_pc` is the address of the `li r5` of a right edge that is adaptive too (0: the edge is the fixed 0xfa of the bar's case).
+    const auto text_box = [&](std::uint32_t right, std::uint32_t back, std::uint32_t top_pc, std::uint32_t right_pc, std::uint32_t bottom_pc) {
         c.put32(frame.at(0x38), 0xffffffffu);  // the text box's ninth argument: no limit
-        c.set({{10, text}, {3, 0x78}, {4, 0x235}, {5, right}, {9, c.u16(text_colour)}, {6, 0x244}, {7, 0xc}, {8, 1}});
+        c.set({{10, text}, {3, 0x78}, {9, c.u16(text_colour)}, {7, 0xc}, {8, 1}});
+        loaded(c, top_pc, 4, 0x235);
+        if (right_pc != 0) loaded(c, right_pc, 5, right);
+        else c.set(5, right);
+        loaded(c, bottom_pc, 6, 0x244);
         c.call(0x1076e160, back);
     };
-    c.set({{8, c.u16(frame_colour)}, {3, 0x64}, {4, 0x22b}, {5, 0x316}, {6, 0x24e}, {7, 0x30}, {9, 0}});
+    c.set({{8, c.u16(frame_colour)}, {3, 0x64}, {7, 0x30}, {9, 0}});
+    loaded(c, 0x1076e6c0, 4, 0x22b);
+    loaded(c, 0x1076e6c4, 5, 0x316);
+    loaded(c, 0x1076e6c8, 6, 0x24e);
     c.call(0x1076d6e0, 0x1076e6d8);
     if (std::int32_t(total) > 0 && std::int32_t(step) <= std::int32_t(total)) {
-        text_box(0xfa, 0x1076e714);
-        c.set({{8, c.u16(frame_colour)}, {3, 0x10e}, {4, 0x235}, {5, 0x302}, {6, 0x244}, {7, 0x60}, {9, 0}});
+        text_box(0xfa, 0x1076e714, 0x1076e6f8, 0, 0x1076e704);
+        c.set({{8, c.u16(frame_colour)}, {3, 0x10e}, {7, 0x60}, {9, 0}});
+        loaded(c, 0x1076e71c, 4, 0x235);
+        loaded(c, 0x1076e720, 5, 0x302);
+        loaded(c, 0x1076e724, 6, 0x244);
         c.call(0x1076d6e0, 0x1076e734);
-        const auto span = 0x300u - 0x110u;
+        c.set(3, 0x110);
+        const auto bar_end = loaded(c, 0x1076e738, 0, 0x300);
+        const auto span = bar_end - 0x110u;
         const auto fill = c.toc(-0x7bdc);
         const auto share = std::int32_t(step * span) / std::int32_t(total);
-        c.set({{3, 0x110}, {5, 0x110 + std::uint32_t(share)}, {4, 0x237}, {8, c.u16(fill)}, {6, 0x242}, {7, 4}});
+        c.set({{5, 0x110 + std::uint32_t(share)}, {8, c.u16(fill)}, {7, 4}});
+        loaded(c, 0x1076e748, 4, 0x237);
+        loaded(c, 0x1076e750, 6, 0x242);
         c.call(0x1076a580, 0x1076e764);
     } else {
-        text_box(0x302, 0x1076e794);
+        text_box(0x302, 0x1076e794, 0x1076e778, 0x1076e77c, 0x1076e784);
     }
-    c.set({{3, 0x64}, {4, 0x22b}, {5, 0x316}, {6, 0x24e}});
+    c.set(3, 0x64);
+    loaded(c, 0x1076e798, 4, 0x22b);
+    loaded(c, 0x1076e79c, 5, 0x316);
+    loaded(c, 0x1076e7a0, 6, 0x24e);
     CM_PROFILE_EVENT("Progress submit");
     c.call(0x107692f0, 0x1076e7a8);
     c.set(3, 1);

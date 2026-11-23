@@ -290,7 +290,10 @@ std::uint32_t adaptive_club_section(const State& s) {
     const auto history = std::uint32_t(s.memory.read<4>(manager + 0x10));
     return history ? s.memory.read<4>(history + 0x14 + 4 * 8) : 0;
 }
+GuiCanvas (*adaptive_gui_canvas_probe)(const State&) = nullptr;
+void (*adaptive_gui_instruction_probe)(State&, std::uint32_t pc, bool replaced) = nullptr;
 GuiCanvas gui_canvas(const State& s) {
+    if (adaptive_gui_canvas_probe) [[unlikely]] return adaptive_gui_canvas_probe(s);
     return s.platform ? s.platform->gui_canvas_size() : GuiCanvas{};
 }
 namespace {
@@ -320,7 +323,16 @@ void draw_sidebar_background(State& s, std::uint32_t control, GuiCanvas canvas) 
     }
 }
 }
+namespace {
+bool adaptive_gui_replace(State& s, std::uint32_t pc);
+}
 bool adaptive_gui_instruction(State& s, std::uint32_t pc) {
+    const bool replaced = adaptive_gui_replace(s, pc);
+    if (adaptive_gui_instruction_probe) [[unlikely]] adaptive_gui_instruction_probe(s, pc, replaced);
+    return replaced;
+}
+namespace {
+bool adaptive_gui_replace(State& s, std::uint32_t pc) {
     const auto canvas = gui_canvas(s);
     if (canvas.original()) return false;
     s.step(pc);
@@ -398,6 +410,7 @@ bool adaptive_gui_instruction(State& s, std::uint32_t pc) {
     default: return false;
     }
     return true;
+}
 }
 void draw_adaptive_background(State& s) {
     const auto canvas = gui_canvas(s);
