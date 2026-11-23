@@ -8,6 +8,8 @@
 #include <random>
 #include <csignal>
 #include <cstdlib>
+#include <functional>
+#include <thread>
 #include <unistd.h>
 #include <sys/wait.h>
 
@@ -567,8 +569,280 @@ void hardware_bounds_checks() {
     require(foreign == 73, "A host fault outside the guest space did not reach its previous handler");
 }
 
+// A frame's destructor runs the epilogue on a normal exit and leaves the guest
+// state alone while an exception (a guest context transfer, a fault) unwinds
+// it, telling the two apart by the thread's uncaught-exception count: read in
+// place once the process has proved the field tracks std::uncaught_exceptions()
+// (guest::detail::uncaught_exceptions_counter), otherwise asked of the runtime.
+void frame_scenarios(const char* mode) {
+    const auto fail = [mode](const char* what) { return std::string(what) + " (" + mode + ")"; };
+    const auto check = [&](bool condition, const char* what) { if (!condition) throw std::runtime_error(fail(what)); };
+    const auto count = [] { return int(guest::detail::uncaught_exceptions(guest::detail::uncaught_exceptions_counter())); };
+    check(count() == std::uncaught_exceptions() && count() == 0, "Uncaught exception count differs outside unwinding");
+    struct Probe {
+        int depth;
+        std::vector<std::pair<int, int>>* seen;
+        ~Probe() {
+            const auto read = [] { return int(guest::detail::uncaught_exceptions(guest::detail::uncaught_exceptions_counter())); };
+            seen->emplace_back(read(), std::uncaught_exceptions());
+            if (depth == 0) return;
+            try {
+                Probe inner{depth - 1, seen};
+                throw 2;
+            } catch (int) {}
+            seen->emplace_back(read(), std::uncaught_exceptions());
+        }
+    };
+    std::vector<std::pair<int, int>> seen;
+    try {
+        Probe probe{1, &seen};
+        throw 1;
+    } catch (int) {}
+    check(seen == std::vector<std::pair<int, int>>{{1, 1}, {2, 2}, {1, 1}}, "Uncaught exception count differs while unwinding");
+    int other_thread = -1, other_thread_std = -2;
+    std::thread([&] {
+        try {
+            struct Seen { int* mine; int* standard; ~Seen() {
+                *mine = int(guest::detail::uncaught_exceptions(guest::detail::uncaught_exceptions_counter()));
+                *standard = std::uncaught_exceptions(); } } seen{&other_thread, &other_thread_std};
+            throw 3;
+        } catch (int) {}
+    }).join();
+    check(other_thread == 1 && other_thread_std == 1, "Uncaught exception count differs on a new thread");
+    check(count() == 0, "Another thread's exception reached this thread's count");
+
+    auto state = std::make_unique<State>();
+    auto& memory = state->memory;
+    guest::Cpu c(*state);
+    constexpr std::uint32_t caller = 0x37100100, size = 0x40;
+    memory.map(caller - 0x100, 0x200);
+    const auto prepare = [&] {
+        c.set({{1, caller}, {29, 0x12345678}, {30, 0x90abcdef}, {31, 0xdeadbeef}});
+        c.set_lr(0x56781234);
+    };
+    const auto clobber = [&] { c.set({{29, 1}, {30, 2}, {31, 3}}); c.set_lr(0x11112222); };
+    const auto left = [&] {
+        return c.sp() == caller && c.r(29) == 0x12345678 && c.r(30) == 0x90abcdef && c.r(31) == 0xdeadbeef && c.lr() == 0x56781234;
+    };
+    const auto abandoned = [&] {
+        return c.sp() == caller - size && c.r(29) == 1 && c.r(30) == 2 && c.r(31) == 3 && c.lr() == 0x11112222;
+    };
+    const guest::Saves saves{.first_gpr = 29};
+    prepare();
+    { guest::Frame frame(c, 0x10100000, size, saves); clobber(); }
+    check(left(), "A frame's normal exit did not run its epilogue");
+    // Negative control: the two outcomes the checks below tell apart differ.
+    check(!abandoned(), "Unwound and returned frames leave the same state");
+    prepare();
+    try { guest::Frame frame(c, 0x10100000, size, saves); clobber(); throw std::runtime_error("fault"); }
+    catch (const std::runtime_error&) {}
+    check(abandoned(), "A fault unwinding a frame ran its epilogue");
+    prepare();
+    try { guest::Frame frame(c, 0x10100000, size, saves); clobber(); throw GuestContextTransfer{state.get(), nullptr}; }
+    catch (const GuestContextTransfer&) {}
+    check(abandoned(), "A guest context transfer unwinding a frame ran its epilogue");
+    // Rethrown exceptions: through `catch (...) { throw; }` inside the frame,
+    // a frame opened in a handler that rethrows, one that returns there, and
+    // std::rethrow_exception.
+    prepare();
+    try {
+        guest::Frame frame(c, 0x10100000, size, saves); clobber();
+        try { throw 6; } catch (...) { throw; }
+    } catch (int) {}
+    check(abandoned(), "A rethrow from a handler inside the frame ran its epilogue");
+    bool handler_returned = false;
+    try {
+        try { throw 7; } catch (...) {
+            prepare();
+            { guest::Frame frame(c, 0x10100000, size, saves); clobber(); }
+            handler_returned = left();
+            prepare();
+            guest::Frame frame(c, 0x10100000, size, saves); clobber();
+            throw;
+        }
+    } catch (int) {}
+    check(handler_returned, "A frame returning inside a handler did not run its epilogue");
+    check(abandoned(), "A frame unwound by a handler's rethrow ran its epilogue");
+    std::exception_ptr saved;
+    try { throw 8; } catch (...) { saved = std::current_exception(); }
+    prepare();
+    try { guest::Frame frame(c, 0x10100000, size, saves); clobber(); std::rethrow_exception(saved); }
+    catch (int) {}
+    check(abandoned(), "A frame unwound by std::rethrow_exception ran its epilogue");
+    // Frames opened by a destructor that runs while another exception unwinds.
+    struct DuringUnwinding {
+        std::function<void()> body;
+        ~DuringUnwinding() { body(); }
+    };
+    bool normal = false, nested = false;
+    try {
+        DuringUnwinding during{[&] {
+            prepare();
+            { guest::Frame frame(c, 0x10100000, size, saves); clobber(); }
+            normal = left();
+            prepare();
+            try { guest::Frame frame(c, 0x10100000, size, saves); clobber(); throw 4; } catch (int) {}
+            nested = abandoned();
+        }};
+        throw 5;
+    } catch (int) {}
+    check(normal, "A frame returning during another exception's unwinding did not run its epilogue");
+    check(nested, "A frame unwound during another exception's unwinding ran its epilogue");
+}
+bool never_tracks() noexcept { return false; }
+void frame_unwinding_checks() {
+    namespace d = guest::detail;
+    // The self-check accepts the field and rejects a reader that does not
+    // follow the count (negative control); it costs one throw and catch.
+    const auto* field = d::uncaught_exceptions_field();
+    const auto started = std::chrono::steady_clock::now();
+    const bool tracks = d::uncaught_count_tracks([field] { return *field; });
+    const auto check_ns = std::chrono::duration_cast<std::chrono::nanoseconds>(std::chrono::steady_clock::now() - started).count();
+    require(tracks, "The uncaught-exception field does not track std::uncaught_exceptions()");
+    require(!d::uncaught_count_tracks([] { return 0u; }) &&
+                !d::uncaught_count_tracks([field] { return *field + 1; }),
+            "The uncaught-exception self-check accepted a reader that does not track the count");
+    frame_scenarios("in place");
+    require(d::uncaught_count_mode.load() == d::UncaughtCount::in_place && d::uncaught_exception_count == field,
+            "The process did not settle on the in-place count");
+    // The fallback: a process whose check fails asks std::uncaught_exceptions()
+    // in every frame (the stderr line is printed once).
+    d::uncaught_count_mode.store(d::UncaughtCount::unchecked);
+    d::uncaught_count_check = never_tracks;
+    d::uncaught_exception_count = nullptr;
+    require(d::uncaught_exceptions_counter() == nullptr && d::uncaught_count_mode.load() == d::UncaughtCount::standard,
+            "A failed self-check did not fall back to std::uncaught_exceptions()");
+    frame_scenarios("std::uncaught_exceptions fallback");
+    require(d::uncaught_exception_count == nullptr, "The fallback cached an in-place count");
+    d::uncaught_count_check = d::uncaught_exceptions_field_tracks;
+    d::uncaught_count_mode.store(d::UncaughtCount::in_place);
+    std::cout << "Frame unwinding: in-place count and fallback, rethrows and handlers passed; self-check " << check_ns << " ns\n";
+}
+
+// The inline prologue against the previous one (HEAD's scalar stores, in its
+// order) for every save layout the code base uses: none, GPRs only (r31,
+// r29, r14), GPRs and FPRs, explicit GPR offset, explicit GPR and FPR
+// offsets, CR, no LR. With an unrestricted write observer (the scalar path)
+// the writes, their bytes and order match; without one (the bulk path) the
+// memory and registers do. frame_save_checks covers GPR+FPR+CR with partial
+// observers and holes.
+struct RecordingObserver final : MemoryObserver {
+    std::vector<std::pair<std::uint32_t, std::vector<std::uint8_t>>> writes;
+    void mapped(std::uint32_t, std::uint64_t) override {}
+    void cleared(std::uint32_t, std::uint64_t) override {}
+    void written(std::uint32_t address, const std::uint8_t* bytes, std::size_t size) override {
+        writes.emplace_back(address, std::vector<std::uint8_t>(bytes, bytes + size));
+    }
+};
+void previous_prologue(guest::Cpu& c, std::uint32_t size, guest::Saves s) {
+    const auto fprs = std::int32_t(32 - s.first_fpr);
+    if (s.first_fpr < 32 && !s.fpr_offset) s.fpr_offset = -fprs * 8;
+    if (s.first_gpr < 32 && !s.gpr_offset) s.gpr_offset = -std::int32_t(32 - s.first_gpr) * 4 - fprs * 8;
+    const auto caller = c.sp();
+    for (unsigned n = s.first_fpr; n < 32; ++n)
+        c.put64(caller + std::uint32_t(s.fpr_offset) + (n - s.first_fpr) * 8, c.s.r<8>(guest::reg::fpr(n)));
+    for (unsigned n = s.first_gpr; n < 32; ++n)
+        c.put32(caller + std::uint32_t(s.gpr_offset) + (n - s.first_gpr) * 4, c.r(n));
+    if (s.cr) {
+        std::uint32_t word = 0;
+        for (unsigned field = 0; field < 8; ++field) word |= std::uint32_t(c.cr(field) & 0xf) << (28 - 4 * field);
+        c.put32(caller + 4, word);
+    }
+    if (s.lr) c.put32(caller + 8, c.lr());
+    c.put32(caller - size, caller);
+    c.set(1, caller - size);
+}
+template <guest::Saves S> void compare_prologue(std::uint32_t size) {
+    constexpr std::uint32_t base = 0x39000000, caller = base + 0x300;
+    for (const bool observed : {true, false}) {
+        std::array<std::unique_ptr<State>, 2> states{std::make_unique<State>(), std::make_unique<State>()};
+        std::array<RecordingObserver, 2> observers;
+        for (unsigned side = 0; side < 2; ++side) {
+            auto& state = *states[side];
+            state.memory.map(base, 0x400);
+            state.memory.copy_in(base, std::vector<std::uint8_t>(0x400, 0xa5));
+            guest::Cpu c(state);
+            c.set(1, caller);
+            for (unsigned n = 0; n < 32; ++n) { if (n != 1) c.set(n, 0x0101 * n + 0x1000000 * (n + 3)); c.set_f(n, 1.0 / (n + 2)); }
+            for (unsigned field = 0; field < 8; ++field) c.set_cr(field, std::uint8_t(field * 5 + 1) & 0xf);
+            c.set_lr(0x10a0b0c0);
+            if (observed) state.memory.observer = &observers[side];
+            if (side == 0) previous_prologue(c, size, S);
+            else {
+                guest::Frame frame(c, 0x10100000, size, S);
+                state.memory.observer = nullptr;
+                require(state.registers == states[0]->registers && state.memory.copy_out(base, 0x400) == states[0]->memory.copy_out(base, 0x400),
+                        "The inline prologue left other stack bytes or registers than the previous one");
+                frame.leave();
+            }
+            state.memory.observer = nullptr;
+        }
+        require(observers[0].writes == observers[1].writes && (observed == !observers[0].writes.empty()),
+                "The inline prologue's observed writes or their order differ from the previous one");
+    }
+}
+void prologue_shape_checks() {
+    compare_prologue<guest::Saves{}>(0x40);
+    compare_prologue<guest::Saves{.first_gpr = 31}>(0x50);
+    compare_prologue<guest::Saves{.first_gpr = 29}>(0x60);
+    compare_prologue<guest::Saves{.first_gpr = 14}>(0xa0);
+    compare_prologue<guest::Saves{.first_gpr = 25, .first_fpr = 28}>(0xc0);
+    compare_prologue<guest::Saves{.first_gpr = 26, .gpr_offset = -0x40, .first_fpr = 30}>(0x90);
+    compare_prologue<guest::Saves{.first_gpr = 27, .gpr_offset = -0x58, .first_fpr = 29, .fpr_offset = -0x20}>(0xb0);
+    compare_prologue<guest::Saves{.first_gpr = 24, .gpr_offset = -0x30, .first_fpr = 31}>(0x80);
+    compare_prologue<guest::Saves{.first_gpr = 28, .cr = true}>(0x70);
+    compare_prologue<guest::Saves{.first_gpr = 30, .lr = false}>(0x40);
+    // A layout known only at run time (a few sites pass a variable).
+    for (const unsigned first : {14u, 22u, 31u, 32u}) {
+        constexpr std::uint32_t base = 0x39800000, caller = base + 0x200;
+        std::array<std::unique_ptr<State>, 2> states{std::make_unique<State>(), std::make_unique<State>()};
+        std::array<RecordingObserver, 2> observers;
+        for (unsigned side = 0; side < 2; ++side) {
+            auto& state = *states[side];
+            state.memory.map(base, 0x300);
+            guest::Cpu c(state);
+            c.set(1, caller);
+            for (unsigned n = 2; n < 32; ++n) c.set(n, 0x11111111u * (n % 15));
+            c.set_lr(0x10b0c0d0);
+            state.memory.observer = &observers[side];
+            volatile unsigned runtime_first = first;
+            const guest::Saves saves{.first_gpr = runtime_first};
+            if (side == 0) previous_prologue(c, 0x80, saves);
+            else { guest::Frame frame(c, 0x10100000, 0x80, saves); state.memory.observer = nullptr; frame.leave(); }
+            state.memory.observer = nullptr;
+        }
+        require(observers[0].writes == observers[1].writes && states[0]->memory.copy_out(base, 0x300) == states[1]->memory.copy_out(base, 0x300),
+                "A run-time save layout's prologue differs from the previous one");
+    }
+    // Negative control: the comparison sees order alone (CR and LR swapped).
+    {
+        std::array<RecordingObserver, 2> observers;
+        for (unsigned side = 0; side < 2; ++side) {
+            auto state = std::make_unique<State>();
+            state->memory.map(0x39a00000, 0x200);
+            guest::Cpu c(*state);
+            c.set(1, 0x39a00100);
+            c.set_cr(2, 4);
+            c.set_lr(0x10c0d0e0);
+            state->memory.observer = &observers[side];
+            if (side == 0) previous_prologue(c, 0x40, {.first_gpr = 31, .cr = true});
+            else {
+                c.put32(0x39a00100 - 4, c.r(31));
+                c.put32(0x39a00100 + 8, c.lr());
+                c.put32(0x39a00100 + 4, std::uint32_t(c.cr(2)) << 20);
+                c.put32(0x39a00100 - 0x40, 0x39a00100);
+            }
+            state->memory.observer = nullptr;
+        }
+        require(observers[0].writes != observers[1].writes, "The prologue comparison did not see a reordered store");
+    }
+    std::cout << "Inline prologue matches the previous one for 10 constant and 4 run-time save layouts, observed and bulk\n";
+}
+
 void checks() {
     read_notification_checks();
+    frame_unwinding_checks();
+    prologue_shape_checks();
     frame_restore_checks();
     frame_save_checks();
     hardware_bounds_checks();

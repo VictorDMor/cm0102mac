@@ -16,12 +16,23 @@
 #include "guest_context_transfer.hpp"
 #include "guest_register_frame.hpp"
 #include "owner_in_place.hpp"
+#include <atomic>
 #include <bit>
+#include <cstdio>
 #include <cstring>
+#include <cxxabi.h>
 #include <utility>
 #include <exception>
 #include <initializer_list>
 #include <stdexcept>
+
+// libc++abi's own declaration (cxa_exception.h, and <cxxabi.h> in newer
+// libc++abi releases); the macOS SDK's <cxxabi.h> does not carry it. The
+// record stays opaque here, as there, so either declaration can come first.
+namespace __cxxabiv1 {
+struct __cxa_eh_globals;
+extern "C" __cxa_eh_globals* __cxa_get_globals();
+}
 
 namespace cm::aot::guest {
 // Ghidra's PowerPC register file (program.json "registers").
@@ -136,47 +147,122 @@ inline void copy_register_words(std::uint8_t* to, const std::uint8_t* from, unsi
 inline void copy_register_words(std::uint8_t* to, const std::uint8_t* from, unsigned words) {
     copy_register_words(to, from, words, std::make_index_sequence<32>{});
 }
+// The count std::uncaught_exceptions() returns, read in place. libc++abi
+// keeps it in the thread's __cxa_eh_globals {caughtExceptions,
+// uncaughtExceptions}; __cxa_get_globals allocates that record on the
+// thread's first use and frees it only when the thread exits, so its address
+// is looked up once per thread instead of through three library calls per
+// read. The layout is libc++abi's, not a published ABI: the first lookup in
+// the process proves that the field tracks std::uncaught_exceptions(), and if
+// it does not, every frame asks std::uncaught_exceptions() as before.
+struct ItaniumExceptionGlobals {
+    void* caught_exceptions;
+    unsigned int uncaught_exceptions;
+};
+inline const unsigned int* uncaught_exceptions_field() {
+    return &reinterpret_cast<const ItaniumExceptionGlobals*>(__cxxabiv1::__cxa_get_globals())->uncaught_exceptions;
+}
+// Whether `read()` equals std::uncaught_exceptions() at the current depth d,
+// and at d + 1 inside a destructor that a thrown exception runs, and at d
+// again once it is caught. One throw and catch.
+template <class Read> bool uncaught_count_tracks(Read read) noexcept {
+    struct During {
+        Read& read;
+        bool& tracks;
+        int depth;
+        ~During() { tracks = tracks && std::uncaught_exceptions() == depth + 1 && int(read()) == depth + 1; }
+    };
+    const int depth = std::uncaught_exceptions();
+    bool tracks = int(read()) == depth;
+    try {
+        During during{read, tracks, depth};
+        throw 0;
+    } catch (int) {}
+    return tracks && int(read()) == depth;
+}
+inline bool uncaught_exceptions_field_tracks() noexcept {
+    const auto* field = uncaught_exceptions_field();
+    return uncaught_count_tracks([field] { return *field; });
+}
+enum class UncaughtCount : unsigned char { unchecked, in_place, standard };
+// Decided once per process; a checker may set `standard`, or reset it with
+// another `uncaught_count_check`, to exercise the fallback.
+inline constinit std::atomic<UncaughtCount> uncaught_count_mode{UncaughtCount::unchecked};
+inline constinit bool (*uncaught_count_check)() noexcept = uncaught_exceptions_field_tracks;
+inline thread_local constinit const unsigned int* uncaught_exception_count = nullptr;
+[[gnu::cold, gnu::noinline]] inline const unsigned int* find_uncaught_exception_count() noexcept {
+    auto mode = uncaught_count_mode.load(std::memory_order_acquire);
+    if (mode == UncaughtCount::unchecked) {
+        const auto decided = uncaught_count_check() ? UncaughtCount::in_place : UncaughtCount::standard;
+        if (uncaught_count_mode.compare_exchange_strong(mode, decided, std::memory_order_acq_rel)) {
+            mode = decided;
+            if (decided == UncaughtCount::standard)
+                std::fputs("cm: the C++ runtime's uncaught-exception count is not where expected; "
+                           "guest frames call std::uncaught_exceptions()\n", stderr);
+        }
+    }
+    if (mode != UncaughtCount::in_place) return nullptr;
+    return uncaught_exception_count = uncaught_exceptions_field();
+}
+// The thread's count, or null where frames must call std::uncaught_exceptions().
+inline const unsigned int* uncaught_exceptions_counter() noexcept {
+    const auto* count = uncaught_exception_count;
+    return count ? count : find_uncaught_exception_count();
+}
+inline unsigned int uncaught_exceptions(const unsigned int* counter) noexcept {
+    return counter ? *counter : unsigned(std::uncaught_exceptions());
+}
 }
 class Frame {
 public:
-    Frame(Cpu& cpu, std::uint32_t entry, std::uint32_t size, Saves saves)
+    // Inline at each of its ~2,100 sites, where the save layout is a constant:
+    // the tests of it and the copy sizes fold away. The scalar fallbacks stay
+    // out of line.
+    [[gnu::always_inline]] Frame(Cpu& cpu, std::uint32_t entry, std::uint32_t size, Saves saves)
         : c(cpu), caller_sp(cpu.sp()), saves_(normalized(saves)), scope(cpu.s, entry) {
         // Register file and stack hold the same big-endian bytes. Without an
         // interested write observer or Date diagnostics, a certified save
         // area is copied directly: GPRs in one span, FPRs one at a time
         // (16-byte slots in the register file, 8 on the stack). Otherwise the
         // scalar stores keep callbacks, their order and partial faults.
-        if (saves_.first_fpr < 32) {
-            const auto start = caller_sp + std::uint32_t(saves_.fpr_offset);
-            const auto count = 32 - saves_.first_fpr;
+        // The layout is read from the argument: the member's address has
+        // escaped into the native scope chain, so only the argument folds.
+        const auto layout = normalized(saves);
+        const auto caller = caller_sp;
+        if (layout.first_fpr < 32) {
+            const auto start = caller + std::uint32_t(layout.fpr_offset);
+            const auto count = 32 - layout.first_fpr;
             if (auto* guest = GuestRegisterFrame::writable_span(c.s.memory, start, count * 8)) {
                 for (unsigned i = 0; i < count; ++i)
-                    std::memcpy(guest + i * 8, c.s.registers.data() + reg::fpr(saves_.first_fpr + i), 8);
+                    std::memcpy(guest + i * 8, c.s.registers.data() + reg::fpr(layout.first_fpr + i), 8);
             } else {
-                for (unsigned n = saves_.first_fpr; n < 32; ++n)
-                    c.put64(start + (n - saves_.first_fpr) * 8, c.s.r<8>(reg::fpr(n)));
+                save_fprs(start, layout.first_fpr);
             }
         }
-        if (saves_.first_gpr < 32) {
-            const auto start = caller_sp + std::uint32_t(saves_.gpr_offset);
-            const auto size = (32 - saves_.first_gpr) * 4;
-            if (auto* guest = GuestRegisterFrame::writable_span(c.s.memory, start, size)) {
-                detail::copy_register_words(guest, c.s.registers.data() + reg::gpr(saves_.first_gpr), size / 4);
+        if (layout.first_gpr < 32) {
+            const auto start = caller + std::uint32_t(layout.gpr_offset);
+            const auto words = 32 - layout.first_gpr;
+            if (auto* guest = GuestRegisterFrame::writable_span(c.s.memory, start, words * 4)) {
+                detail::copy_register_words(guest, c.s.registers.data() + reg::gpr(layout.first_gpr), words);
             } else {
-                for (unsigned n = saves_.first_gpr; n < 32; ++n)
-                    c.put32(start + (n - saves_.first_gpr) * 4, c.r(n));
+                save_gprs(start, layout.first_gpr);
             }
         }
-        if (saves_.cr) c.put32(caller_sp + 4, condition_register());
-        if (saves_.lr) c.put32(caller_sp + 8, c.lr());
-        base_ = caller_sp - size;
-        c.put32(base_, caller_sp);
+        if (layout.cr) c.put32(caller + 4, condition_register());
+        if (layout.lr) c.put32(caller + 8, c.lr());
+        base_ = caller - size;
+        c.put32(base_, caller);
         c.set(1, base_);
         scope.frame(base_);
     }
     // Returning runs the epilogue; unwinding (a guest context transfer, a
     // fault) leaves the guest state as it is.
-    ~Frame() { if (!left_ && std::uncaught_exceptions() == exceptions_) leave(); }
+    // Unwinding is told apart as std::uncaught_exceptions() does, from the
+    // thread's count (detail::uncaught_exceptions_counter). The pointer is
+    // this thread's and outlives the frame: a frame is a stack object of the
+    // thread that built it, and no thread-exit destructor in this code base
+    // runs guest code (every thread_local here is a plain pointer).
+    ~Frame() { if (!left_ && detail::uncaught_exceptions(uncaught_) == exceptions_) leave(); }
     Frame(const Frame&) = delete;
     Frame& operator=(const Frame&) = delete;
     // The new stack pointer, and the address of a local at sp+offset.
@@ -223,6 +309,12 @@ public:
     }
 
 private:
+    [[gnu::noinline, gnu::cold]] void save_fprs(std::uint32_t start, unsigned first) {
+        for (unsigned n = first; n < 32; ++n) c.put64(start + (n - first) * 8, c.s.r<8>(reg::fpr(n)));
+    }
+    [[gnu::noinline, gnu::cold]] void save_gprs(std::uint32_t start, unsigned first) {
+        for (unsigned n = first; n < 32; ++n) c.put32(start + (n - first) * 4, c.r(n));
+    }
     static Saves normalized(Saves saves) {
         const auto fprs = std::int32_t(32 - saves.first_fpr);
         if (saves.first_fpr < 32 && !saves.fpr_offset) saves.fpr_offset = -fprs * 8;
@@ -238,7 +330,8 @@ private:
     std::uint32_t caller_sp, base_ = 0;
     Saves saves_;
     GuestNativeScope scope;
-    int exceptions_ = std::uncaught_exceptions();
+    const unsigned int* uncaught_ = detail::uncaught_exceptions_counter();
+    unsigned int exceptions_ = detail::uncaught_exceptions(uncaught_);
     bool left_ = false;
 };
 
