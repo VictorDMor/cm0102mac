@@ -60,7 +60,7 @@ target_sources(cm_aot PRIVATE compiler_arithmetic_adapter.cpp compiler_arithmeti
 target_sources(cm_aot PRIVATE register_context.cpp register_context_adapter.cpp)
 target_sources(cm_aot PRIVATE stdlib_core.cpp stdlib_core_adapter.cpp)
 target_sources(cm_aot PRIVATE time_runtime.cpp time_runtime_adapter.cpp)
-target_sources(cm_aot PRIVATE import_descriptor.cpp import_descriptor_adapter.cpp)
+target_sources(cm_aot PRIVATE import_descriptor.cpp import_descriptor_adapter.cpp comparator_glue.cpp)
 target_sources(cm_aot PRIVATE native_service.cpp native_service_adapter.cpp)
 target_sources(cm_aot PRIVATE engine_initialization.cpp engine_initialization_adapter.cpp runtime_diagnostics.cpp)
 target_sources(cm_aot PRIVATE utility_object.cpp utility_object_adapter.cpp)
@@ -4472,6 +4472,17 @@ if(EXISTS "${CM_ORACLE_DIR}/program.json")
     add_test(NAME qsort4x_original_override COMMAND "${CMAKE_COMMAND}" -E env CM_QSORT4X_ORIGINAL=1
         $<TARGET_FILE:cm-qsort4x-checks> "${CM_ORACLE_DIR}" --original-routing)
     add_test(NAME qsort4x_audit COMMAND "${Python3_EXECUTABLE}" "${CMAKE_SOURCE_DIR}/../tools/test_qsort4x_audit.py")
+endif()
+# The comparator glue called without the dispatcher (comparator_glue.cpp, in cm_aot) against the dispatcher path.
+add_executable(cm-comparator-glue-checks comparator_glue_checks.cpp)
+target_link_libraries(cm-comparator-glue-checks PRIVATE cm_aot)
+target_compile_options(cm-comparator-glue-checks PRIVATE -Wall -Wextra -Werror -Wpedantic -ffp-contract=off)
+if(EXISTS "${CM_ORACLE_DIR}/program.json")
+    add_test(NAME comparator_glue_equivalence COMMAND cm-comparator-glue-checks "${CM_ORACLE_DIR}")
+    add_test(NAME comparator_glue_declining_owners COMMAND "${CMAKE_COMMAND}" -E env CM_PLAYER_STATS_ORIGINAL=1
+        CM_SHORTLIST_MANAGER_ORIGINAL=1 $<TARGET_FILE:cm-comparator-glue-checks> "${CM_ORACLE_DIR}")
+    add_test(NAME comparator_glue_profile_declines COMMAND "${CMAKE_COMMAND}" -E env CM_AOT_MATCH_PC_PROFILE=1
+        $<TARGET_FILE:cm-comparator-glue-checks> "${CM_ORACLE_DIR}" --profile)
 endif()
 
 # FINANCE.CPP (tools/finance_audit.py): club accounts, budgets, the daily and seasonal passes and the finance news.

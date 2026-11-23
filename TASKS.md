@@ -18,10 +18,14 @@ the scrollback. Remove ticked items once their commit is pushed.
 
 ## Now: speed is architecture, not remaining PowerPC (measured 2026-11-23)
 
+- [ ] **Failing since some commit before 2026-11-23 15:30, cause not found yet:** `modern_stdlib_core_production` and `original_stdlib_core_profile` fail at the abs leaf 0x10775540 ("one dedicated modern entry"). They fail the same with the comparator fast path compiled off. Suspects: today's generator changes around page 0x10775 (the assertion reporter 0x107755c0 hooked between stdlib_core's bodies, leaf inlining). Bisect and fix.
+
 Host sampling (`sample`, 60 s) of the game thread during a week's Continue on the 26-country career (isolated copy, `tools/game_driver.py`; timing script `.local/performance/week_pairs.py`): the thread is 100% busy. Self time: game logic in C++ owners 49.6%, dispatch and call glue 16.6% (`dispatch_until`, `run_leaf`, `Cpu::call`, `try_modern_*`, dispatch scopes), the memory write observer 10.5%, system libraries 8.1%, guest stack frames (`guest::Frame`) 7.2%, sort/search 4.2%, generated pages 3.9%. By subsystem in that minute: match engine about 30%, daily contracts with club interest about 18%, shortlist approach targets about 12%.
 
 - [x] Write observer: the HD drawing layer is the session's `Memory::observer` and every guest store called `report_write` out of line; the interval test is now inline (about 10% of the week, measured).
 - [ ] Call glue in the hottest chains (match_eng/match_pl, contract_manager -> shortlist_manager, shortlist `Program::call`/`call_rewritten`): direct C++ calls instead of the dispatcher, no `guest::Frame` where the stack audit shows no reader.
+  - Comparator glue (2026-11-23, uncommitted): qsort/bsearch call 0x10781320 45.2M times a season day, 39.4M into PLAYER_STATS' relation order and SHORTLIST_MANAGER's comparators; `call_glue_directly` (native/comparator_glue.cpp) runs the glue and asks the comparator's owner without the dispatcher. After review fixes (owner asked every call, no typed table): day -2.36% median pair (5/5), A/A -0.07%; instruction counts unchanged, strict replays and both pair sweeps MATCH. A typed comparator cache gave -3.3% but bypassed the owner's per-call choice; it would need the owners to export their comparator. Not run: `--stack-audit`.
+  - Remaining Frame cost on the day: `Frame::Frame` 6.5%, `leave` 2.5%, `uncaught_exceptions` 2.8% (both calls per frame), `GuestNativeScope` 1.1%.
 - [ ] `__ulock_wait` (1,785 samples) and `__cxa_get_globals_fast` (442) on the game thread: find the lock and the exception-state lookups.
 - [ ] Then native data per type (decided 2026-11-06): the larger work.
 - A week's Continue is not reproducible run to run in the driven copy (it stops on day 357, 360 or 361): compare runs that reach the same day, or find the time-dependent input.

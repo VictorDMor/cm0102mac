@@ -1,5 +1,6 @@
 #include "stdlib_core.hpp"
 #include "mac_abi.hpp"
+#include "comparator_glue.hpp"
 
 namespace cm::aot::stdlib_core {
 namespace {
@@ -16,6 +17,12 @@ struct SearchAbi : MacAbi {
         s.pc = pc; ++execution->budget_resumes; execution->resume_original(s, caller); return false;
     }
     void charge(std::uint64_t count) { if (execution) s.executed += count; }
+    // `bl 0x10781320` with the comparator's vector in r12: without the
+    // dispatcher where comparator_glue.hpp can (the same state), else the guest call.
+    void compare_through_glue(std::uint32_t link) {
+        if (!call_glue_directly(s, link, comparator, &dispatch_escapes)) call(0x10781320, link);
+    }
+    GlueTarget comparator;
     void words(unsigned first, std::uint32_t pc, bool restoring) {
         s.wr<4>(2432, r(1) - (32 - first) * 4);
         for (unsigned n = first; n < 32; ++n) {
@@ -87,7 +94,7 @@ void binary_search(State& state, SearchExecution* execution) {
     // Probe element zero before constructing the [1,count-1] interval. Its
     // live arguments and comparator clobbers are part of the Mac contract.
     if (!a.checkpoint(0x10775650, 3)) return;
-    a.charge(3); a.put(28, a.r(25)); a.put(12, a.r(27)); a.call(0x10781320, 0x1077565c);
+    a.charge(3); a.put(28, a.r(25)); a.put(12, a.r(27)); a.compare_through_glue(0x1077565c);
     if (!a.checkpoint(0x1077565c, 7)) return;
     a.charge(3); a.load(2, a.r(1) + 20, 0x1077565c); a.compare(std::bit_cast<std::int32_t>(a.r(3)));
     if (state.r<1>(2304) & 2) {
@@ -108,7 +115,7 @@ void binary_search(State& state, SearchExecution* execution) {
         if (!a.checkpoint(0x10775688, 8)) return;
         a.charge(8); a.put(0, a.r(30) + a.r(29)); a.put(28, a.r(0) >> 1);
         a.put(0, a.r(26) * a.r(28)); a.put(31, a.r(25) + a.r(0));
-        a.put(3, a.r(24)); a.put(4, a.r(31)); a.put(12, a.r(27)); a.call(0x10781320, 0x107756a8);
+        a.put(3, a.r(24)); a.put(4, a.r(31)); a.put(12, a.r(27)); a.compare_through_glue(0x107756a8);
         if (!a.checkpoint(0x107756a8, 6)) return;
         a.charge(3); a.load(2, a.r(1) + 20, 0x107756a8); a.compare(std::bit_cast<std::int32_t>(a.r(3)));
         if (state.r<1>(2304) & 2) { a.charge(2); a.put(3, a.r(31)); break; }

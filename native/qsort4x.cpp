@@ -13,6 +13,8 @@
 // r0 is kept only at the assertion call: the comparator glue and the epilogue
 // overwrite it everywhere else.
 #include "qsort4x.hpp"
+#include "comparator_glue.hpp"
+#include <stdexcept>
 
 namespace cm::aot::qsort4x {
 namespace {
@@ -100,7 +102,11 @@ private:
     bool precedes(std::uint32_t first, std::uint32_t second, std::uint32_t back) {
         c.set({{21, sibling_at}, {22, node_at}, {23, parent_at}, {26, node}});
         c.set({{3, first}, {4, second}, {12, compare}});
-        c.call(comparator_glue, back);
+        // Without the dispatcher where comparator_glue.hpp can (the same state);
+        // the stack check is the one Cpu::call makes.
+        const auto stack = c.sp();
+        if (!call_glue_directly(c.s, back, comparator)) c.call(comparator_glue, back);
+        else if (c.sp() != stack) throw std::logic_error("Guest call returned on a different stack: " + hex_address(comparator_glue));
         c.set(2, c.u32(c.sp() + 0x14));
         const auto order = std::int32_t(c.r(3));
         c.compare(0, order, 0);
@@ -172,6 +178,7 @@ private:
     std::uint32_t left = 0, right = 0, left_at = 0, right_at = 0;
     std::uint32_t node = 0, node_at = 0, parent_at = 0;
     std::uint32_t sibling_at;  // r21: the caller's value (or the count) until a node has a sibling
+    GlueTarget comparator;
 };
 }
 

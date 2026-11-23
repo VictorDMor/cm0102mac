@@ -1864,6 +1864,16 @@ The fused 8-byte sort (`tools/native_sort8.py`) stays the first hook at 0x107686
 it inlines; the entry's C++ calls the pair sort through its page so that it still does. A typed C++ comparator called
 directly from the heapsort would replace that fusion; nothing does that yet.
 
+The heapsorts and bsearch (`stdlib_core.cpp`) call the generic CFM glue 0x10781320 through `call_glue_directly`
+(`native/comparator_glue.hpp`, 2026-11-23): the glue's five instructions in import_descriptor's order (r0, the r2 store
+at sp+20, CTR, r2, its counters), then, for PLAYER_STATS' relation order and SHORTLIST_MANAGER's six comparators (39M of
+the day's 45M glue calls), the owner as the destination's page asks it (`run_owner_in_place`, every call). Those
+comparators make no call, so running them without a dispatcher scope is exact. Any other destination, or a declining
+owner, continues in `run_until`. That scope opens after the glue, which records no context and keeps r1, so longjmp and
+exception transfers resolve as on the reference path. It declines under a dispatch probe, a routine checker, an
+import-descriptor observer or original switch, the PC profile, or less than five instructions of budget.
+`cm-comparator-glue-checks` covers each of these, a checker appearing mid-sort, and a longjmp out of a sort and a bsearch.
+
 ## DISCIPLINE.CPP: bans, suspensions and their history
 
 37 entries / 11,122 instructions at 0x100de410..0x100e92d0 (`tools/discipline_audit.py`). The unit has no source
