@@ -192,7 +192,7 @@ GRAPH_CARBON_ENTRIES = tuple(entry for entry, _ in ROUTINES)
 GRAPH_CARBON_HOOKED = tuple(entry for entry, _, _ in rewritten(drafts=True))
 
 # The generator requires every owned entry routed (GRAPH_CARBON_ROUTINE): all 54 are.
-COMPLETE = True
+COMPLETE = False  # drafts again since 2026-11-23: routines the host's HD drawing observes inside (see the .inc notes)
 
 
 def require_graph_carbon_index(db, path=INCLUDES, complete=None):

@@ -127,7 +127,7 @@ FONT_CPP_ENTRIES = tuple(entry for entry, _ in ROUTINES)
 FONT_CPP_HOOKED = tuple(entry for entry, _, _ in rewritten(drafts=True))
 
 # The generator requires every entry routed (FONT_CPP_ROUTINE): all 19 are.
-COMPLETE = True
+COMPLETE = False  # drafts again since 2026-11-23: routines the host's HD drawing observes inside (see the .inc notes)
 
 
 def require_font_cpp_index(db, path=INCLUDES, complete=None):

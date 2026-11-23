@@ -11,6 +11,7 @@ GRAPH_CARBON_ROUTINE(0x1076a8f0, 0x1076ad50, R3, "e96c24745594dbe4", [](Cpu& c) 
                                  std::int32_t(c.r(8)), std::int32_t(c.r(9)), c.r(10), c.u32(c.sp() + 0x38), left);
     c.set({{4, left.r4}, {5, left.r5}});
 })
-GRAPH_CARBON_ROUTINE(0x1076ad50, 0x1076b018, R3, "43a01da42fd3602b", [](Cpu& c) {
+// DRAFT (2026-11-23): the host's HD drawing observes instructions inside this routine (tools/native_drawing_audit.py, tools/adaptive_gui_audit.py); until the C++ passes them, the game runs the original.
+GRAPH_CARBON_DRAFT(0x1076ad50, 0x1076b018, R3, "43a01da42fd3602b", [](Cpu& c) {
     graph_carbon::draw_ellipse(c, {std::int32_t(c.r(3)), std::int32_t(c.r(4)), std::int32_t(c.r(5)), std::int32_t(c.r(6)), c.r(7), c.r(8)});
 })

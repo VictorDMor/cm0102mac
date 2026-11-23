@@ -259,12 +259,13 @@ class FontCppAuditTests(unittest.TestCase):
     def test_exactly_the_routed_blocks_are_routed_and_hooked_and_the_hook_checks_fail_when_they_should(self):
         from compile_recomp import OWNER_REPLACEMENTS, SEMANTIC_REPLACEMENTS, generate_page
         pinned = {a: (b, d) for a, b, _, d in CONTRACTS}
-        self.assertTrue(audit.COMPLETE)
+        self.assertFalse(audit.COMPLETE)
+        DRAFTS = frozenset({0x1074f800, 0x10750580, 0x107500f0})  # the host's HD drawing observes instructions inside them
         listed = audit.rewritten(drafts=True)
         for entry, end, expected in listed:
             self.assertEqual(pinned[entry], (end, expected))
         self.assertEqual({entry for entry, _, _ in listed}, ROUTED)
-        self.assertEqual({entry for entry, _, _ in audit.rewritten()}, ROUTED)
+        self.assertEqual({entry for entry, _, _ in audit.rewritten()}, ROUTED - DRAFTS)
         self.assertEqual(set(audit.FONT_CPP_HOOKED), ROUTED)
         for entry in ENTRIES:
             owners = [owner for at, owner in OWNER_REPLACEMENTS if at == entry]
