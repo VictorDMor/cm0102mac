@@ -2463,6 +2463,35 @@ object (TOC -0x7bb0) owns two display tables (+0x2c68, +0x12d6b0) and, per human
   the competition team comparison 0x10073d00, the club Historial's file-backed sibling 0x101434a0 (needs its text file), the
   compare-players screen 0x1038e350, 0x100465c0 / 0x10048450 / 0x10048e00 / 0x1004a4a0 / 0x10054810 and the rest of the list in
   `.local/rewrites/screens/NOTES.md`.
+- FILE_SCREENS' generic message box and the confirmation before a match. The box (render 0x100f08c0, opened by
+  0x100f05a0 and the long-text twin 0x100f0720; every opener shares the render: Exit the game, Restart the game
+  and the other questions of the menu bar, the file screens, SETUP and SEARCH_SCREENS, the tactics formation
+  prompts) draws its wrapped message through `add_text` into a one-column grid at 110,145-780,535 (one control
+  per wrapped line, with explicit bounds) and a No(1)/Yes(2) table or a standalone Ok(3) at 100,555-790,590,
+  which is the shape `message_screen_layout.cpp` already knows, so the builder maps to `ScreenTemplate::message_screen`
+  and no new layout file exists. The pre-match screen (render 0x1029ad50, opener 0x1029ab60 called from
+  MATCH_SCREENS' 0x1029a680 when a single-player manager's next match starts, handler 0x1029cd10) lists the
+  line-up's problems (the scan of the eleven and the substitutes at 0x1029ae08...) and ends with "Proceed to the
+  match ?" (string pool +0x1a2f); it builds the same grid and a No (action 2) / Yes (action 3) table, so it maps
+  to the same template. 0x1029a680's other branch (network games) shows "Waiting for other players...", which stays
+  classic. Gate: the generic box is adaptive in the local group with or without a career (its layout reads no
+  record); the pre-match screen needs a career like the other message screens; a secondary (modal) group, a
+  network session, a scrollbar in the grid or more than 30 rows leave the classic geometry. `--message-screens`
+  gained nine scenarios: quit (parent 0xb), restart (0x3d), quit and a notice without a career, short and long
+  Ok notices, long questions and the pre-match confirmation, answered No/Ok through the original handlers
+  (the pre-match No sets the two globals at -0x7e60/-0x7e5c and returns -9, compared with the original); the
+  existing mutants run on them. The pre-match fixture fills the human manager's slot (0x102aa3d0(0), +0xec the
+  match record, +0xf0 its home club) the way MATCH_DAY 0x101cbbe0 does; the record is synthetic (clubs, home flag,
+  five substitutes), so its text is the fewest lines the builder gives.
+  Two things the box taught the shared layout: the builder makes one grid row per line, so a message of 15 or
+  more lines had its padding rows hidden and its last line squeezed to nothing (the layout now shows the rows it
+  adds), and rows are no longer fixed at 28 pixels: a long message takes down to 21 so its buttons stay on the
+  canvas, and one that cannot is left as built (the 16-line scenario declines at 801x601 and 1440x600, runs at the
+  larger canvases; the checker asserts both). Unexercised: Yes (quit calls exit, the line-up's Yes starts the
+  match), the other openers' texts and colours, a pre-match screen with the problems of a real squad, a message
+  with a scrollbar, the tactics prompts' parent values. The fixture is a world snapshot
+  (`.local/benchmarks/world/ref-week/initial.snapshot`); the ctest line needs `ui/tactics-views`, which a rebuilt
+  `.local` does not have yet.
 - Club information (section 5, builder 0x1002f1e0) uses `club_information_layout.cpp`.
   Shared Yoga tracks bound table width and row spacing. Finance/Income/Expenditure (history27 low bits
   2/4/8) retain their backing/text layers, 10px inset, five column weights and 14-row capacity. Their

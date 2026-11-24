@@ -151,7 +151,9 @@ bool adaptive_screen_available(const State& s, std::uint32_t builder) {
     case ScreenTemplate::news_inbox:
         return instance && value(1) < 8 && value(8);
     case ScreenTemplate::message_screen:
-        // The layout moves the grids of the shared shape and declines any other arrangement.
+        // The layout moves the grids of the shared shape and declines any other arrangement. FILE_SCREENS' generic message box
+        // is also opened without a career (Exit the game from the start screen, a failed load): its layout reads no record either.
+        if (builder == 0x100f08c0) return true;
         return instance && read(instance + 0x24);
     case ScreenTemplate::board_confidence: {
         // The opener stores the manager's own club; the builder reads its record.

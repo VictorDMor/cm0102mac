@@ -10,7 +10,8 @@ namespace cm::aot {
 // Message screens (the offer decision from the news, transfer completion, transfer-list confirmation, an
 // offer's restriction and feedback messages, the staff release, the manager's job confirmations: apply for
 // a job, rescind the contract, retire, and the questions and notices opened from the news or a person: scouting,
-// choosing two players, the Intertoto place, a job offer, a transfer request, an invalid national squad): the title and subtitle, one wrapped or centered message in a
+// choosing two players, the Intertoto place, a job offer, a transfer request, an invalid national squad, and FILE_SCREENS' generic
+// message box with the confirmation before a match, whose message is a grid row per wrapped line): the title and subtitle, one wrapped or centered message in a
 // one-column grid at 110,140-780,545 (110,145-780,535 for the manager's confirmations), and a row of
 // buttons that is either a grid of one to six columns or one standalone control at 100,555-790,590 (110,555-780,590 for the national team notices). Their builders place the message by
 // row (a short message in the middle row of nineteen) and size the buttons by a column specification, so
@@ -70,11 +71,15 @@ void layout_message_screen(State& s, std::uint32_t display, GuiCanvas canvas) {
     const int width = std::min(800, available.width());
     available.left += (available.width() - width) / 2; available.right = available.left + width;
     const unsigned used = last - first + 1, count = std::max(used + 2, 5u);
-    constexpr int row_height = 28, gap = 10, button_height = 35;
+    constexpr int gap = 10, button_height = 35;
+    const int under = buttons ? gap + button_height : 0;
+    // Rows are 28 pixels, fewer when a long message needs them to keep the buttons on the canvas. The original row height is about
+    // 21 pixels; a message that cannot keep that stays as built.
+    if (count > 30) return;
+    const int row_height = std::min(28, (available.height() - 16 - under) / int(count));
+    if (row_height < 21) return;
     const int panel_height = int(count) * row_height + 16;
-    const int block = panel_height + (buttons ? gap + button_height : 0);
-    // The original row height is about 21 pixels; a message that cannot keep that stays as built.
-    if (count > 30 || int(count) * 21 + 16 + (buttons ? gap + button_height : 0) > available.height()) return;
+    const int block = panel_height + under;
     const int top = available.top + std::max(0, (available.height() - block) / 3);
     const ScreenRect panel{available.left, top, available.right, top + panel_height};
     ScreenRect buttons_box{};
@@ -122,7 +127,11 @@ void layout_message_screen(State& s, std::uint32_t display, GuiCanvas canvas) {
     // Rows beyond the compacted table do not exist any more.
     // The grid also keeps its first and last used rows and a scroll position that resizing resets.
     const auto scroll = c.u32(message_grid + 0x1fc);
+    const unsigned built_rows = screen.rows(message_grid);
     screen.set_rows(message_grid, count);
+    // A message with as many lines as the builder gave rows (the generic message box makes a row per line) needs its padding rows
+    // and they start hidden, which would squeeze the lines into the rows that were there.
+    if (count > built_rows) screen.show_rows(message_grid, int(built_rows), int(count));
     c.put32(message_grid + 0x10, first + unsigned(row_delta));
     c.put32(message_grid + 0x14, last + unsigned(row_delta));
     screen.resize_rows(message_grid);

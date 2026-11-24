@@ -10,20 +10,29 @@
 // to the shortlist or set one to compare (a person and a mode), withdraw a bid (a link), release a player, end a
 // loan early (a person), and the trial period selection (a person; its seven-column row of controls is the one
 // panel that is not a single column, tried at its shortest, middle and longest periods).
+// FILE_SCREENS' generic message box (render 0x100f08c0, opened by 0x100f05a0 from the menu bar, the file screens, the setup
+// and the search screens) and the confirmation before a match (render 0x1029ad50, opener 0x1029ab60, "Proceed to the
+// match ?", opened by 0x1029a680 when the manager plays) are message screens too: a wrapped message in a one-column grid
+// at 110,145-780,535 and a No/Yes table or a standalone Ok at 100,555-790,590. Their scenarios open the box through its original
+// opener with the arguments the menu bar passes (quit has parent value 0xb, restart 0x3d), with short and long texts, with
+// and without a career, and answer No (1) or Ok (3); the line-up confirmation answers No (2). Yes is never exercised: quit's
+// calls exit and the line-up's starts the match.
 // Needs TransferScene from adaptive_transfer_status_checks.hpp.
 void message_screens_builder(const char* path) {
     Temporary temp;
     initialize_new_screens(temp.path / "Screens.plist");
-    constexpr unsigned scenarios = 43;
+    constexpr unsigned scenarios = 52;
     const char* names[scenarios]{"offer decision", "completion", "listing", "listing (loan)", "restriction", "feedback", "staff release", "apply for job", "rescind contract", "retire",
         "remove exchange player", "shortlist add", "shortlist remove", "compare first", "compare second", "withdraw bid", "release", "release (no contract)", "trial 2 weeks", "trial 1 week", "trial 4 weeks", "loan recall",
         "scout player", "two players needed", "Intertoto place", "job offer", "transfer request", "invalid squad (national team)", "invalid squad (under 21)", "friendly tournament invitation",
-        "disk full", "no memory", "FA Cup round", "take control of a club", "reassume control", "appeal against punishment", "ultimatum to the board", "national squad: remove from the main squad", "national squad: remove from the reserve squad", "national squad: first-team limit", "national squad: Under-21 limit", "special holiday for a player", "counsellor for a player"};
+        "disk full", "no memory", "FA Cup round", "take control of a club", "reassume control", "appeal against punishment", "ultimatum to the board", "national squad: remove from the main squad", "national squad: remove from the reserve squad", "national squad: first-team limit", "national squad: Under-21 limit", "special holiday for a player", "counsellor for a player",
+        "quit (Exit the game)", "restart (Restart the game)", "quit without a career", "notice (Ok)", "notice without a career (Ok)", "long question", "long notice (Ok)", "very long question", "confirmation before the match"};
     const unsigned builders[scenarios]{0x10421fb0, 0x10423270, 0x1042a810, 0x1042a810, 0x10420b50, 0x10421070, 0x1009e8f0, 0x101c8730, 0x101c8b60, 0x101c98c0,
         0x10422b50, 0x10424f80, 0x10424f80, 0x104249e0, 0x104249e0, 0x104265c0, 0x1042ae90, 0x1042ae90, 0x1042b580, 0x1042b580, 0x1042b580, 0x1042f7c0, 0x103ac810, 0x103acc50, 0x10075410, 0x101c94e0, 0x10093bd0, 0x102bd090, 0x102bd920, 0x10049550,
-        0x10340db0, 0x10341120, 0x104c65a0, 0x1033bdc0, 0x1033c970, 0x106fcbb0, 0x10702ba0, 0x102bc400, 0x102bc400, 0x102bc400, 0x102bc400, 0x10702580, 0x10702580};
+        0x10340db0, 0x10341120, 0x104c65a0, 0x1033bdc0, 0x1033c970, 0x106fcbb0, 0x10702ba0, 0x102bc400, 0x102bc400, 0x102bc400, 0x102bc400, 0x10702580, 0x10702580,
+        0x100f08c0, 0x100f08c0, 0x100f08c0, 0x100f08c0, 0x100f08c0, 0x100f08c0, 0x100f08c0, 0x100f08c0, 0x1029ad50};
     // The control that answers No or Back: dismisses the screen without touching a record (0: none exercised).
-    const unsigned dismissals[scenarios]{1, 0, 1, 1, 1, 0, 0, 1, 1, 1, 1, 2, 2, 2, 11, 1, 1, 1, 3, 3, 3, 1, 54, 56, 1, 1, 34, 1, 1, 1, 51, 52, 2, 32, 37, 1, 2, 1, 1, 1, 1, 2, 2};
+    const unsigned dismissals[scenarios]{1, 0, 1, 1, 1, 0, 0, 1, 1, 1, 1, 2, 2, 2, 11, 1, 1, 1, 3, 3, 3, 1, 54, 56, 1, 1, 34, 1, 1, 1, 51, 52, 2, 32, 37, 1, 2, 1, 1, 1, 1, 2, 2, 1, 1, 1, 3, 3, 1, 3, 1, 2};
     for (unsigned scenario = 0; scenario < scenarios; ++scenario) {
         std::vector<std::uint8_t> baseline;
         for (bool adaptive : {false, true}) {
@@ -107,6 +116,37 @@ void message_screens_builder(const char* path) {
                     t.invoke(0x102bc340, {t.person, squad[scenario - 37], limit[scenario - 37]}); break;
                 }
                 case 41: case 42: t.invoke(0x10702470, {t.person, scenario == 41 ? 1u : 0u}); break;   // the player's action menu: a special holiday (1) or a spiritual counsellor (0) for him
+                case 43: case 44: case 45: case 46: case 47: case 48: case 49: case 50: {
+                    // The generic box, as the menu bar opens it: the heading, "Please Confirm", the body, Yes/No (1) or Ok (0), the colours and the parent value.
+                    const auto text = [&](const std::string& value) {
+                        const auto at = allocate(t.s, unsigned(value.size()) + 1, true);
+                        for (std::size_t k = 0; k < value.size(); ++k) c.put8(at + unsigned(k), std::uint8_t(value[k]));
+                        return at;
+                    };
+                    const std::string paragraph = "The directors have asked for a meeting about the squad, the budget and the plans for the coming weeks, and want the answer before the transfer window closes. ";
+                    const char* bodies[8]{"Exit the game ?", "Restart the game ?", "Exit the game ?", "The game cannot be saved while a player is on a response screen.", "The saved game could not be saved.", nullptr, nullptr, nullptr};
+                    std::string body = bodies[scenario - 43] ? bodies[scenario - 43] : "";
+                    if (scenario == 48) { for (int k = 0; k < 2; ++k) body += paragraph; body += "Do you agree ?"; }
+                    if (scenario == 49) { for (int k = 0; k < 4; ++k) body += paragraph; }
+                    if (scenario == 50) { for (int k = 0; k < 5; ++k) body += paragraph + "\n"; body += "Do you agree ?"; }
+                    if (scenario == 45 || scenario == 47) c.put32(t.manager + 4, 0);
+                    const unsigned parent[8]{0xb, 0x3d, 0xb, 0, 0, 0x3d, 0, 0x3d};
+                    const bool question = scenario != 46 && scenario != 47 && scenario != 49;
+                    const auto heading = t.invoke(0x10355cf0, {});
+                    const auto words = text("Please Confirm"), message = text(body);
+                    const auto ink = t.invoke(0x10355d30, {1}), paper = t.invoke(0x10355d30, {0});
+                    t.invoke(0x100f05a0, {heading, words, message, question ? 1u : 0u, ink, paper, parent[scenario - 43]});
+                    break;
+                }
+                case 51: {   // the confirmation before the match: the human manager's slot holds the match record MATCH_DAY leaves there (the home club in +0x20, the away club in +0x24, home in +0x44, the competition in +0x18, the substitutes in +0x52)
+                    const auto slot = t.invoke(0x102aa3d0, {0});
+                    require(slot, "Line-up fixture needs the human manager's slot");
+                    const auto record = allocate(t.s, 0x200, true), competition = allocate(t.s, 0x100, true);
+                    c.put32(record + 0x20, t.managed); c.put32(record + 0x24, other); c.put8(record + 0x44, 1); c.put32(record + 0x18, competition); c.put8(record + 0x52, 0x50);
+                    c.put32(slot + 0xec, record); c.put32(slot + 0xf0, t.managed);
+                    t.invoke(0x1029ab60, {});
+                    break;
+                }   // the confirmation before the match, as the manager's next match opens it
                 default: t.invoke(0x1042f670, {t.person}); break;
                 }
                 require(t.builder() == builders[scenario], "Message screen did not open through its original opener");
@@ -145,7 +185,10 @@ void message_screens_builder(const char* path) {
                     require(std::abs((panel.left + panel.right) - (title.left + title.right)) <= 2, "Message panel is not centered under the title bars");
                     require(panel.left >= 110 && panel.width() <= 800 && panel.right <= size.width - 10 && panel.top >= 140 && panel.bottom < size.height - 10,
                             "Message panel outside the content area");
-                    require(panel.top + panel.height() / 2 <= size.height / 2, "Message dialog not in the upper half");
+                    // A message too long for the upper half starts where the free space's third puts it: at the top of the content.
+                    const auto content = shell.content(140);
+                    require(panel.top + panel.height() / 2 <= size.height / 2 ||
+                            panel.top <= content.top + 5 + std::max(0, (content.height() - panel.height() - 45) / 3), "Message dialog not in the upper half");
                     // Height: the message's rows and a row of padding on each side, no more.
                     unsigned first = 99, last = 0;
                     int text_top = 100000, text_bottom = -100000;
@@ -157,6 +200,9 @@ void message_screens_builder(const char* path) {
                         require(box.left >= panel.left && box.right <= panel.right && box.top >= panel.top && box.bottom <= panel.bottom,
                                 "Message text outside its panel");
                         text_top = std::min(text_top, box.top); text_bottom = std::max(text_bottom, box.bottom);
+                        // The rows share the panel evenly: a line that lost its row is squeezed to nothing (a message as long as the
+                        // grid's built rows needs its padding rows shown).
+                        require(box.height() >= 14, "Message line squeezed out of its row");
                         // Text keeps its width and the center it had in the original panel's center column.
                         const unsigned at_old = 0xba864 + i * 0x17c;
                         const auto old_left = display_word(old, at_old + 0x28), old_right = display_word(old, at_old + 0x2c);
@@ -188,7 +234,11 @@ void message_screens_builder(const char* path) {
                         }
                     }
 
-                    require(panel.height() == int(std::max(last - first + 3, 5u)) * 28 + 16, "Message panel not bounded to its message");
+                    // Rows of 28 pixels, or down to 21 when a long message would push the buttons off the canvas.
+                    const int rows_needed = int(std::max(last - first + 3, 5u));
+                    require(panel.height() <= rows_needed * 28 + 16 && panel.height() >= rows_needed * 21 + 16 &&
+                            (panel.height() == rows_needed * 28 + 16 || rows_needed * 28 + 16 + 45 > shell.content(145).height()),
+                            "Message panel not bounded to its message");
                     require(std::abs((text_top + text_bottom) - (panel.top + panel.bottom)) <= 28, "Message not vertically centered in its panel");
                     // Buttons, Back included: one row, equal size, inside the panel's bounds, right-aligned to it.
                     if (!before.footer_controls.empty()) {
@@ -219,6 +269,21 @@ void message_screens_builder(const char* path) {
                     require(before.message >= 0, "Original message panel absent");
                     const auto old = t.layout(records, "Message screen");
                     if (!on || size.original()) { require(t.s.memory.copy_out(t.display, 0x129da8) == old, "Legacy message screen changed"); pick(); return; }
+                    {   // A message whose rows cannot keep about 21 pixels on this canvas, or with more than 30 rows, stays as the builder made it.
+                        unsigned first = 99, last = 0;
+                        for (unsigned i = 0; i < t.controls(); ++i) {
+                            const auto at = t.control(i);
+                            if (c.i16(at + 0x72) == before.message) { first = std::min(first, c.u32(at + 0x24)); last = std::max(last, c.u32(at + 0x24)); }
+                        }
+                        const int count = int(std::max(last - first + 3, 5u));
+                        const ScreenLayout shell{size};
+                        const int top = display_word(old, 4 + unsigned(before.message) * 0xbf0 + 4);
+                        const bool footer = !before.footer_controls.empty();
+                        if (count > 30 || (shell.content(top).height() - 16 - (footer ? 45 : 0)) / count < 21) {
+                            require(t.s.memory.copy_out(t.display, 0x129da8) == old, "Message too long for the canvas was not left as built");
+                            pick(); return;
+                        }
+                    }
                     verify(size, before, old);
                     last_before = before; last_old = old;
                     pick();

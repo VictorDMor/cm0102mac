@@ -46,6 +46,11 @@ constexpr ScreenTemplate screen_template(std::uint32_t builder) {
     // The manager's confirmations (Yes/No under one question): apply for a job, rescind the contract, retire.
     // They are message screens too, with their panel at 110,145-780,535.
     case 0x101c8730: case 0x101c8b60: case 0x101c98c0: return ScreenTemplate::message_screen;
+    // FILE_SCREENS' generic message box (render 0x100f08c0: every opener of 0x100f05a0 and 0x100f0720, such as Exit the game,
+    // Restart the game, a full disk or a failed save) and the confirmation before a match (render 0x1029ad50, opener 0x1029ab60,
+    // "Proceed to the match ?"). Both draw the wrapped message in a one-column grid at 110,145-780,535 and a No/Yes table or
+    // a standalone Ok at 100,555-790,590, which is the message screen's shape.
+    case 0x100f08c0: case 0x1029ad50: return ScreenTemplate::message_screen;
     // The transfer dialogs of TRANSFER_SCREENS: remove the exchange player from a proposal, add a player to the
     // shortlist, set a player as the first or second to compare, withdraw a bid, release a player, end a loan
     // early (each a question with a No/Yes footer) and the trial period selection (one row of controls and a
