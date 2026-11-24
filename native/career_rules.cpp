@@ -1,4 +1,5 @@
 #include "career_rules.hpp"
+#include "calendar.hpp"
 #include <algorithm>
 #include <charconv>
 #include <ranges>
@@ -112,6 +113,12 @@ std::vector<std::string> CareerRules::read(std::string_view text) {
                 values.push_back(*entry);
                 applied = true;
             }
+            // Of two lines the later one wins; the earlier stays in the member, as for any repeated statement.
+            if (const auto entry = read_holiday_return_statement(line)) {
+                std::erase_if(holiday_returns_, [&](const HolidayReturn& other) { return other.staff == entry->staff; });
+                holiday_returns_.push_back(*entry);
+                applied = true;
+            }
             if (!applied) ignored.emplace_back(line);
         }
     }
@@ -194,6 +201,47 @@ std::optional<competition_overrides::Override> read_value_statement(std::string_
     }
     if (!competition_overrides::problem(entry).empty()) return std::nullopt;
     return entry;
+}
+
+std::string holiday_return_statement(const HolidayReturn& entry) {
+    return "holiday_return " + std::to_string(entry.date.day) + " " + std::to_string(entry.date.year) + " " + std::to_string(entry.staff);
+}
+
+std::optional<HolidayReturn> read_holiday_return_statement(std::string_view line) {
+    const auto rest = after(line, "holiday_return");
+    if (!rest) return std::nullopt;
+    std::array<long, 3> words{};
+    auto text = *rest;
+    for (auto& word : words) {
+        const auto space = text.find(' ');
+        const auto value = number(text.substr(0, space));
+        if (!value || (&word != &words.back() && space == std::string_view::npos)) return std::nullopt;
+        word = *value;
+        text.remove_prefix(space == std::string_view::npos ? text.size() : space + 1);
+    }
+    if (!text.empty() || words[1] < 0 || words[1] > 0xffff || words[2] < 0 || words[2] > 0xffffffffL) return std::nullopt;
+    if (words[0] < 0 || words[0] >= long(calendar::year_length(std::uint16_t(words[1])))) return std::nullopt;
+    return HolidayReturn{{std::int16_t(words[0]), std::uint16_t(words[1])}, std::uint32_t(words[2])};
+}
+
+std::optional<HolidayReturn> CareerRules::holiday_return(std::uint32_t staff) const {
+    for (const auto& entry : holiday_returns_)
+        if (entry.staff == staff) return entry;
+    return std::nullopt;
+}
+
+bool CareerRules::set_holiday_return(std::uint32_t staff, std::optional<HolidayDate> date) {
+    if (!editable()) return false;
+    std::erase_if(statements_, [&](const std::string& line) {
+        const auto entry = read_holiday_return_statement(line);
+        return entry && entry->staff == staff;
+    });
+    std::erase_if(holiday_returns_, [&](const HolidayReturn& other) { return other.staff == staff; });
+    if (date) {
+        holiday_returns_.push_back({*date, staff});
+        statements_.push_back(holiday_return_statement(holiday_returns_.back()));
+    }
+    return true;
 }
 
 bool CareerRules::set_competition_overrides(const competition_overrides::OverrideSet& set) {

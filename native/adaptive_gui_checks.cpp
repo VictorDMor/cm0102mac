@@ -8,6 +8,8 @@
 #include "code_fragment_adapter.hpp"
 #include "routine_check.hpp"
 #include "new_screens.hpp"
+#include "holiday_return.hpp"
+#include "human_manager_detail.hpp"
 #include "debug_localization.hpp"
 #include "match_debugging.hpp"
 #include "debug_match_results.hpp"

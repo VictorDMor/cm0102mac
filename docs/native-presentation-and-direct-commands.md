@@ -55,6 +55,17 @@ through `tools/restart_game_audit.py`): the game closes through its own exit
 routine, as on Quit, and the application opens again at the start screen. As the
 confirmation says, an unsaved career is not kept.
 
+The Manager menu's Go on holiday dialog (builder `0x101c9eb0`) has an optional return date
+(`native/holiday_return.cpp`, hooks in `tools/holiday_return_audit.py`). Two rows after the
+original's seven: the date (a link, +1 day per click, tomorrow first) and the shortcuts None, +1
+week, +2 weeks, +1 month. They are action-3 links with the values 7 to 11 in the control's +0x48,
+which the original handler ignores, so the host takes them first. Yes binds the date to the
+manager as a `holiday_return <day> <year> <staff id>` line of the career's `native_rules.tmp`;
+GAME's per-slot routine (`0x1011b330`) ends the holiday on that date through the original's own
+way back, `set_away(humans, 0, manager)`, and drops the line when the manager is no longer away
+(any other way back first). With no date nothing differs from the original. There is no "end of
+season" shortcut: the game keeps no single end date, each league ends on its own.
+
 Command-S takes precedence over the original sound toggle and requests a save to
 the full path of the most recently completed career load or save. A failed save
 or final rename does not replace that path. When no destination is known, use

@@ -18,6 +18,8 @@ inline HolidayShape holiday_shape(TransferScene& t) {
     return r;
 }
 
+#include "holiday_return_checks.hpp"
+
 inline void verify_holiday(TransferScene& t, GuiCanvas size, const HolidayShape& shape, const std::vector<std::uint8_t>& old, const char* what) {
     auto& c = t.c;
     const std::string name = what;
@@ -220,5 +222,9 @@ void holiday_builder(const char* path) {
         }
         std::cout << "holiday state " << scenario << " (" << names[scenario] << "): dialog geometry, original input, records/RNG and guest ABI preserved" << std::endl;
     }
+    holiday_return_calendar();
+    holiday_return_member();
+    holiday_return_scene(path);
+    std::cout << "holiday return date: calendar, member, dialog links, binding and the daily hook" << std::endl;
     initialize_new_screens();
 }
