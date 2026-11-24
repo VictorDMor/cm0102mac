@@ -8,6 +8,7 @@
 // writes the registers the original writes on the path it takes, and the sort's own writes follow the listing.
 // Registers that are only scratch in the original (r16-r27 inside the swap, r25/r26/r29/r31 at 0x1049f030's
 // qsort call) are not reproduced where no callee that can reach an import runs; see the comments.
+#include "match_play.hpp"
 #include "league_base_table_detail.hpp"
 
 namespace cm::aot::league_base {
@@ -397,6 +398,7 @@ void rank_by_head_to_head(Cpu& c, std::uint32_t league, std::uint32_t rows) {
 }
 
 std::uint32_t sort_standings(Cpu& c, std::uint32_t league, std::uint32_t rows) {
+    const LeagueTurn turn(c.s);
     const Frame frame(c, 0x1049eb30, 0xa0, {.first_gpr = 13});
     const auto descriptor = c.toc(toc::standings_order);  // r13
     std::uint32_t keep_order_found = 0, from_first = 0;   // r14: the keep-order code was found, r15: the position code came first

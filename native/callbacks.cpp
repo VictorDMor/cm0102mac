@@ -1,3 +1,4 @@
+#include "guest_scratch.hpp"
 #include "callbacks.hpp"
 #include "aot_runtime.hpp"
 #include "season_reference.hpp"
@@ -18,7 +19,7 @@ std::uint32_t call_original(State& s, std::uint32_t transition_vector, std::span
     s.memory.clear(stack, previous_stack - stack);
     s.memory.write<4>(stack, previous_stack);
     s.wr<4>(4, stack);
-    s.wr<4>(8, s.memory.read<4>(transition_vector + 4));
+    s.wr<4>(8, private_toc(s, std::uint32_t(s.memory.read<4>(transition_vector + 4))));
     for (std::size_t i = 0; i < arguments.size(); ++i) {
         s.wr<4>((3 + i) * 4, arguments[i]);
         s.memory.write<4>(stack + 24 + i * 4, arguments[i]);

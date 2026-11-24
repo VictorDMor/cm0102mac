@@ -3,6 +3,8 @@
 #include "guest_scratch.hpp"
 #include <algorithm>
 #include <condition_variable>
+#include <functional>
+#include <vector>
 #include <exception>
 #include <mutex>
 #include <pthread.h>
@@ -19,6 +21,8 @@ struct GuestWorker::Impl {
     enum class Job { none, run, done, quit } job = Job::none;
     std::uint32_t return_pc = 0;
     std::exception_ptr failure;
+    std::function<void(State&)> task;
+    std::vector<std::pair<std::uint32_t, std::uint64_t>> mapped_at_start;
     std::uint64_t calls = 0;
     // The part of the caller's frame a callee may touch (linkage and parameter area), carried to the own
     // stack and back; and where the own stack's first frame starts, 0 on the caller's stack.
@@ -67,10 +71,46 @@ struct GuestWorker::Impl {
         for (;;) {
             wake.wait(lock, [&] { return job == Job::run || job == Job::quit; });
             if (job == Job::quit) return;
-            try { run_until(worker, return_pc); } catch (...) { failure = std::current_exception(); }
+            try { if (task) task(worker); else run_until(worker, return_pc); } catch (...) { failure = std::current_exception(); }
             job = Job::done;
             wake.notify_all();
         }
+    }
+    void start(std::function<void(State&)> work) {
+        if (!scratch || !own_sp) throw std::logic_error("A guest worker runs beside others only on its own stack and heap");
+        if (main.allocator_original || std::ranges::contains(main.allocator_entry_original, true))
+            throw std::logic_error("A guest worker with a scratch heap needs the rewritten allocator");
+        if (main.memory.date_observer || main.memory.read_trace)
+            throw std::logic_error("Guest workers do not run beside others under memory diagnostics");
+        call_mutex.lock();   // until wait(), or until this fails
+        struct Unlock { std::mutex* mutex; ~Unlock() { if (mutex) mutex->unlock(); } } unlock{&call_mutex};
+        copy_configuration(worker, main);
+        mapped_at_start = main.memory.mapped_ranges();
+        worker.memory.share(main.memory);
+        worker.memory.observer = main.memory.observer;
+        worker.registers = main.registers;
+        worker.pc = main.pc;
+        worker.executed = 0; worker.budget = main.budget; worker.native_calls = 0;
+        worker.memory_error = 0;
+        worker.platform = main.platform;
+        // An empty first frame: no back chain.
+        main.memory.clear(own_sp, caller_frame);
+        worker.wr<4>(4, own_sp);
+        std::lock_guard lock(mutex);
+        task = std::move(work); failure = nullptr; job = Job::run;
+        unlock.mutex = nullptr;
+        wake.notify_all();
+    }
+    void wait() {
+        {
+            std::unique_lock lock(mutex);
+            wake.wait(lock, [&] { return job == Job::done; });
+            job = Job::none; task = nullptr;
+        }
+        ++calls;
+        call_mutex.unlock();
+        if (failure) std::rethrow_exception(failure);
+        if (worker.memory.mapped_ranges() != mapped_at_start) throw std::runtime_error("A job on the guest worker mapped guest memory");
     }
     void call(std::uint32_t until) {
         std::lock_guard one_call(call_mutex);
@@ -125,5 +165,8 @@ GuestWorker::GuestWorker(State& main, std::optional<unsigned> own, bool scratch)
 GuestWorker::~GuestWorker() = default;
 void GuestWorker::call(std::uint32_t return_pc) { impl->call(return_pc); }
 std::uint64_t GuestWorker::calls() const { return impl->calls; }
+void GuestWorker::start(std::function<void(State&)> job) { impl->start(std::move(job)); }
+void GuestWorker::wait() { impl->wait(); }
+State& GuestWorker::state() { return impl->worker; }
 std::uint32_t GuestWorker::scratch_in_use() const { return impl->scratch ? GuestScratch::in_use(impl->worker) : 0; }
 }

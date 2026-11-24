@@ -85,7 +85,7 @@ set(CM_STAFF_CONTRACTS_SOURCES staff_contracts_expiry.cpp staff_contracts_terms.
     staff_contracts_adapter.cpp)
 target_sources(cm_aot PRIVATE ${CM_STAFF_CONTRACTS_SOURCES})
 target_sources(cm_aot PRIVATE simulated_stats.cpp)
-target_sources(cm_aot PRIVATE match_day_driver.cpp)
+target_sources(cm_aot PRIVATE match_day_driver.cpp match_play.cpp)
 target_sources(cm_aot PRIVATE por_second.cpp)
 target_sources(cm_aot PRIVATE ger_first.cpp)
 target_sources(cm_aot PRIVATE african_nations.cpp)

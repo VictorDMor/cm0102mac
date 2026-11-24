@@ -1,5 +1,6 @@
 #pragma once
 #include <cstdint>
+#include <functional>
 #include <memory>
 #include <optional>
 
@@ -32,6 +33,13 @@ public:
     // host's allocation records (a heap that grows belongs to the game thread).
     void call(std::uint32_t return_pc);
     std::uint64_t calls() const;
+    // For work that runs beside other workers (the play phase): starts `job` on the worker's thread with the
+    // worker's State (main's registers as they stand, its own stack and scratch heap, which it must have) and
+    // returns; wait() blocks until the job ends and throws what it threw. Main must not run guest code that
+    // the job can meet in between, and memory observers other than the session's write observer are refused.
+    void start(std::function<void(State&)> job);
+    void wait();
+    State& state();
     // Bytes of the scratch heap its pool holds from the host records now (0 without one).
     std::uint32_t scratch_in_use() const;
 private:

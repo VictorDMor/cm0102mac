@@ -5,6 +5,7 @@
 // the title. 0x104a3b90 and 0x104a3930 leave r4-r10 as the original does (league_base_volatile_readers.inc), so
 // the registers the original writes are written here at the same places; 0x104a4870 is a leaf of 0x104a3b90
 // whose registers reach it the same way.
+#include "match_play.hpp"
 #include "league_base_table_detail.hpp"
 
 namespace cm::aot::league_base {
@@ -429,6 +430,7 @@ std::uint32_t apply_result(Cpu& c, std::uint32_t league, std::uint32_t fixture, 
 
 std::uint32_t result_decides_title(Cpu& c, std::uint32_t league, std::uint32_t club, std::uint32_t fixture) {
     // The match engine calls this: the full original image (the frame, r28-r31 at each call).
+    const LeagueTurn turn(c.s);
     const Frame frame(c, 0x104a26b0, 0x50, {.first_gpr = 28});
     c.set({{28, club}, {29, fixture}, {30, league}});
     const auto done = [&](std::uint32_t value) { c.set(3, value); return value; };

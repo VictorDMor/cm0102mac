@@ -1,4 +1,6 @@
 // MATCH_ENG.CPP, rating predicates: stage lookup, fixture grade and the side's bench average.
+#include "guest_scratch.hpp"
+#include "match_play.hpp"
 #include "match_eng_rating_pred.hpp"
 
 namespace cm::aot::match_eng {
@@ -113,6 +115,13 @@ void post_grade(Cpu& c, std::uint32_t match) {
     c.set(3, list);
     c.put32(frame.at(0x38), first_of_list(c, list));
     c.set({{3, c.u32(c.toc(-0x7428))}, {4, frame.at(0x38)}});
+    // The referee's table is shared: a play phase on a worker hands the grade to the game thread (match_play.hpp).
+    if (auto* play = play_context(c.s)) {
+        PlayContext::Grade held{c.r(3), {}};
+        for (unsigned n = 0; n < 8; ++n) held.record[n] = c.u8(frame.at(0x38) + n);
+        play->grades.push_back(held);
+        return;
+    }
     c.call(0x102d4590, 0x101fdb04);
 }
 

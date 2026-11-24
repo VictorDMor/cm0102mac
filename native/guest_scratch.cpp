@@ -11,8 +11,11 @@ namespace {
 // ordinary path to one load when there is no scratch heap at all.
 std::array<std::atomic<State*>, GuestScratch::limit> owners{};
 std::atomic<unsigned> active{0};
+std::array<std::atomic<PlayContext*>, GuestScratch::limit> plays{};
 // The pool context is the first thing in the range (52 bytes, zero: the allocator's own initial state).
 constexpr std::uint32_t context_size = 64;
+static_assert(context_size <= GuestScratch::toc_copy && GuestScratch::toc_copy + GuestScratch::toc_span <= GuestScratch::statics &&
+              GuestScratch::statics < GuestScratch::heap && GuestScratch::heap < GuestScratch::size);
 int slot_of(std::uint32_t address) {
     if (address < GuestScratch::start(0) || address >= GuestScratch::start(GuestScratch::limit)) return -1;
     return int((address - GuestScratch::start(0)) / GuestScratch::size);
@@ -33,7 +36,7 @@ void GuestScratch::enter(State& main, State& worker, unsigned index) {
     main.memory.clear(begin, size);   // also what an earlier worker left: a match must not read it
     worker.allocated.clear();
     worker.available.clear();
-    worker.available.emplace(begin + context_size, size - context_size);
+    worker.available.emplace(begin + heap, size - heap);
     worker.heap_end = 0x30000000;   // the growing heap's limit: these records never extend
     owners[index].store(&worker);
     ++active;
@@ -41,6 +44,7 @@ void GuestScratch::enter(State& main, State& worker, unsigned index) {
 void GuestScratch::leave(State& worker) {
     const auto slot = slot_of(worker);
     if (slot < 0) return;
+    plays[slot].store(nullptr);
     owners[slot].store(nullptr);
     --active;
 }
@@ -66,6 +70,26 @@ State& heap_records(State& s, std::uint32_t address) {
     auto* owner = owners[slot].load(std::memory_order_relaxed);
     if (!owner) throw std::logic_error("A block of a scratch heap outlived it: " + hex_address(address));
     return *owner;
+}
+std::uint32_t GuestScratch::range_of(const State& worker) {
+    const auto slot = slot_of(worker);
+    return slot < 0 ? 0 : start(unsigned(slot));
+}
+void GuestScratch::set_play(State& worker, PlayContext* play) {
+    const auto slot = slot_of(worker);
+    if (slot < 0) throw std::logic_error("A play phase needs a worker with a scratch range");
+    plays[slot].store(play, std::memory_order_release);
+}
+std::uint32_t private_toc(const State& s, std::uint32_t loaded) {
+    if (!active.load(std::memory_order_relaxed) || loaded != GuestScratch::game_toc) [[likely]] return loaded;
+    const auto slot = slot_of(s);
+    if (slot < 0 || !plays[slot].load(std::memory_order_relaxed)) return loaded;
+    return GuestScratch::start(unsigned(slot)) + GuestScratch::toc_copy + 0x8000;
+}
+PlayContext* play_context(const State& s) {
+    if (!active.load(std::memory_order_relaxed)) [[likely]] return nullptr;
+    const auto slot = slot_of(s);
+    return slot < 0 ? nullptr : plays[slot].load(std::memory_order_relaxed);
 }
 bool is_scratch(const State& s) { return active.load(std::memory_order_relaxed) && slot_of(s) >= 0; }
 }

@@ -1,4 +1,6 @@
 #include "tactics.hpp"
+#include "guest_scratch.hpp"
+#include "match_play.hpp"
 #include <algorithm>
 #include <cmath>
 #include <optional>
@@ -136,6 +138,8 @@ std::uint32_t destroy(Cpu& c, std::uint32_t tactics, std::uint32_t dispose) {
 }
 
 std::uint32_t record_result(Cpu& c, std::uint32_t tactics, std::uint32_t fixture) {
+    // A play phase on a worker holds this back for the game thread (match_play.hpp): the table is shared.
+    if (auto* play = play_context(c.s)) { play->results.push_back({tactics, fixture}); return 0; }
     Frame frame(c, 0x103af130, 0xf0, {.first_gpr = 25});
     c.set({{25, tactics}, {26, fixture}, {29, c.toc(success_slot)}, {30, c.toc(message_slot)}, {31, c.toc(pool_slot)}});
     const auto score = frame.at(0x88);  // the fixture's score, as 0x1030d4a0 reports it

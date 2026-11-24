@@ -20,6 +20,7 @@
 // transfer (setjmp/longjmp, the exception runtime) and budget stop as the
 // reference's does. Only an owner run here, with no scope, could differ, so
 // that is limited to the comparators below, which make no call.
+#include "guest_scratch.hpp"
 #include "comparator_glue.hpp"
 #include "guest_context_transfer.hpp"
 #include "import_descriptor.hpp"
@@ -91,7 +92,7 @@ bool call_glue_directly(State& s, std::uint32_t back, GlueTarget& target, std::u
         s.step(glue + 8);
         s.wr<4>(ctr, s.r<4>(r0));
         s.step(glue + 12);
-        s.wr<4>(r2, s.memory.read<4>(std::uint32_t(s.r<4>(r12) + 4)));
+        s.wr<4>(r2, private_toc(s, std::uint32_t(s.memory.read<4>(std::uint32_t(s.r<4>(r12) + 4)))));
         s.step(glue + 16);
         s.pc = std::uint32_t(s.r<4>(ctr));
     } catch (...) {

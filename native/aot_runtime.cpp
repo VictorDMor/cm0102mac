@@ -1,3 +1,4 @@
+#include <execinfo.h>
 #include "aot_runtime.hpp"
 #include "allocator_adapter.hpp"
 #include "import_bridge.hpp"
@@ -65,6 +66,15 @@ thread_local void* fault_view_context = nullptr;
     // open), and the reporter reads the context that was running.
     void* context = fault_reporter_context;
     if (fault_view) { new Memory::ExactBounds(*fault_view); context = fault_view_context; }
+    // The host frames of the faulting thread, for atos: the guest context alone does not say which native
+    // routine made the access, nor on which thread.
+    // Asked for with CM_AOT_FAULT_FRAMES: symbolication allocates, and the fault may sit inside the allocator.
+    if (std::getenv("CM_AOT_FAULT_FRAMES")) {
+        void* frames[48];
+        const int count = backtrace(frames, 48);
+        std::fprintf(stderr, "Host frames of the faulting thread%s:\n", fault_view ? " (a guest worker)" : "");
+        backtrace_symbols_fd(frames, count, 2);
+    }
     if (fault_reporter) fault_reporter(address, message, context);
     else std::fprintf(stderr, "%s\n", message);
     std::fflush(stdout);

@@ -1,3 +1,4 @@
+#include "guest_scratch.hpp"
 #include "import_descriptor.hpp"
 
 namespace cm::aot::import_descriptor {
@@ -26,7 +27,7 @@ struct TailAbi {
     void install_destination_toc() {
         checkpoint();
         const auto toc = std::uint32_t(state.r<4>(48) + 4);
-        state.wr<4>(8, state.memory.read<4>(toc));
+        state.wr<4>(8, private_toc(state, std::uint32_t(state.memory.read<4>(toc))));
     }
     void select_destination() { checkpoint(); state.wr<4>(4132, state.r<4>(0)); }
     void tail() { checkpoint(); state.pc = std::uint32_t(state.r<4>(4132)); }

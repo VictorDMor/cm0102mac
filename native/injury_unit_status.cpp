@@ -1,6 +1,8 @@
 // INJURY.CPP: questions about a person's status row and current injury, the manager's entry list, and the
 // injury choice (injury_unit_status.hpp). The daily update is in injury_unit_status_update.cpp.
 #include "injury_unit_status.hpp"
+#include "guest_scratch.hpp"
+#include "match_play.hpp"
 #include "injury_unit_status_detail.hpp"
 #include <stdexcept>
 
@@ -266,6 +268,8 @@ void close_injury(Cpu& c, std::uint32_t manager_object, std::uint32_t person, st
 }
 
 void note_entry(Cpu& c, std::uint32_t manager_object, std::uint32_t key, std::uint32_t kind_cell, std::uint32_t strength_cell) {
+    // A play phase on a worker keeps its notes to itself until the game thread files them (match_play.hpp).
+    if (auto* play = play_context(c.s)) { play->note(c, key, kind_cell, strength_cell); return; }
     Frame frame(c, 0x10186cd0, 0x60, {.first_gpr = 27});
     c.set({{28, manager_object}, {29, key}, {30, kind_cell}, {31, strength_cell}});
     if (c.u32(manager_object + entry_list) == 0) {

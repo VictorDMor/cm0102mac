@@ -1,9 +1,17 @@
 #include "match_day_driver.hpp"
 #include "guest_abi.hpp"
+#include "guest_scratch.hpp"
+#include "guest_worker.hpp"
+#include "match_play.hpp"
 
 #include <array>
+#include <algorithm>
 #include <atomic>
+#include <charconv>
 #include <cstdlib>
+#include <exception>
+#include <memory>
+#include <sys/sysctl.h>
 #include <initializer_list>
 #include <string_view>
 #include <vector>
@@ -24,7 +32,8 @@ constexpr std::uint32_t fixture_size = 0x6c, manager_size = 0x70;
 MatchDayOrder initial_order() {
     const char* value = std::getenv("CM_MATCH_DAY_ORDER");
     const std::string_view name = value ? value : "";
-    return name == "in_order" ? MatchDayOrder::in_order : name == "phases" ? MatchDayOrder::phases : MatchDayOrder::original;
+    return name == "in_order" ? MatchDayOrder::in_order : name == "phases" ? MatchDayOrder::phases
+         : name == "parallel" ? MatchDayOrder::parallel : MatchDayOrder::original;
 }
 // Read on first use: no order of static initialisation to depend on.
 std::atomic<MatchDayOrder>& order() {
@@ -36,6 +45,38 @@ std::atomic<MatchDayOrder>& order() {
 constexpr std::size_t stretch_limit = 32;
 
 bool finished(std::int8_t state) { return state == 2 || state == 8; }
+
+unsigned worker_count() {
+    unsigned count = 0;
+    if (const char* value = std::getenv("CM_MATCH_WORKERS")) {
+        const std::string_view text(value);
+        std::from_chars(text.data(), text.data() + text.size(), count);
+    }
+    if (!count) {
+        int cores = 0;
+        std::size_t size = sizeof cores;
+        if (sysctlbyname("hw.perflevel0.physicalcpu", &cores, &size, nullptr, 0) != 0 || cores < 1) cores = 4;
+        count = std::min(unsigned(cores), 8u);
+    }
+    return std::clamp(count, 1u, unsigned(GuestScratch::limit));
+}
+// The workers of the game's State, made at the first parallel stretch and kept.
+struct Workers {
+    State* main = nullptr;
+    std::vector<std::unique_ptr<GuestWorker>> list;
+    std::vector<std::unique_ptr<GuestWorker>>& of(State& s) {
+        if (main != &s || list.empty()) {
+            list.clear();
+            main = nullptr;
+            std::vector<std::unique_ptr<GuestWorker>> made;
+            for (unsigned n = 0, count = worker_count(); n < count; ++n) made.push_back(std::make_unique<GuestWorker>(s, n));
+            list = std::move(made);
+            main = &s;
+        }
+        return list;
+    }
+};
+Workers workers;
 
 struct Driver {
     Cpu& c;
@@ -301,11 +342,52 @@ struct Driver {
         }
     }
 
-    struct Pending { std::uint32_t fixture, first_byte; };
+    struct Pending { std::uint32_t fixture, first_byte; std::unique_ptr<PlayContext> play; };
+    // The plays of a stretch on the workers, each taking the next match until none is left. A match's RNG
+    // stream comes from the game's cursor and salt as set-up left them and from its fixture, so the result
+    // does not depend on which worker plays it or on how many there are. The game thread only waits.
+    void play_on_workers(std::vector<Pending>& pending) {
+        if (pending.empty()) return;
+        auto& list = workers.of(c.s);
+        const std::uint64_t base = std::uint64_t(c.u32(c.toc(-0x7b84))) << 32 | c.u32(c.toc(-0x7b90));   // the cursor and the salt
+        const auto first = fixtures();
+        std::atomic<std::size_t> next{0};
+        const auto job = [&](State& worker) {
+            Cpu w{worker};
+            for (;;) {
+                const auto n = next.fetch_add(1);
+                if (n >= pending.size()) return;
+                auto& match = pending[n];
+                begin_play(worker, *match.play, base ^ (std::uint64_t((match.fixture - first) / fixture_size + 1) * UINT64_C(0x9e3779b97f4a7c15)));
+                // Ends the play on every path; its own failure (a play that ended on another TOC) is not thrown over another.
+                struct End {
+                    State& s; PlayContext& play; int unwinding = std::uncaught_exceptions();
+                    ~End() noexcept(false) { try { end_play(s, play); } catch (...) { if (std::uncaught_exceptions() == unwinding) throw; } }
+                } end{worker, *match.play};
+                while (!finished(w.i8(match.fixture + 0x68))) {
+                    w.set({{3, w.u32(match.fixture + 0x58)}, {4, 0xffffffff}, {18, match.fixture}});
+                    w.call(0x101d3f60, 0x101cc284);
+                    w.put8(match.fixture + 0x68, w.r(3));
+                }
+            }
+        };
+        if (list.empty()) throw std::logic_error("No guest worker to play the matches on");
+        const auto used = std::min(list.size(), pending.size());
+        std::size_t started = 0;
+        std::exception_ptr failure;
+        try { for (; started < used; ++started) list[started]->start(job); } catch (...) { failure = std::current_exception(); }
+        // The game thread only waits: the original's event pump between matches runs guest code, which must not
+        // meet the plays. It runs between stretches (keep_screen_alive, in the set-up loop).
+        for (std::size_t n = 0; n < started; ++n)
+            try { list[n]->wait(); } catch (...) { if (!failure) failure = std::current_exception(); }
+        if (failure) std::rethrow_exception(failure);
+        for (const auto& match : pending) report_private_writes(*match.play);
+    }
     // phases: the matches set up so far are played, then finished in fixture order.
     void flush(std::vector<Pending>& pending) {
         bool first = true;
-        for (const auto& match : pending) {
+        if (order == MatchDayOrder::parallel) play_on_workers(pending);
+        else for (const auto& match : pending) {
             // As between two matches of the original: the host's events, so the window stays alive.
             if (!first) keep_screen_alive();
             first = false;
@@ -314,6 +396,9 @@ struct Driver {
         for (const auto& match : pending) {
             c.set(18, match.fixture); c.set(19, match.first_byte);
             c.put32(self + 0x28, c.u32(self + 0x28) + 1);
+            // What the play held back, on the frame's unused report buffer (0x88, 32 bytes).
+            if (match.play) replay_deferred(c, *match.play, sp() + 0x88);
+            c.set(18, match.fixture); c.set(19, match.first_byte);
             finish(match.fixture, match.first_byte);
         }
         pending.clear();
@@ -365,8 +450,8 @@ struct Driver {
                 }
                 const auto first_byte = std::uint32_t(c.u8(c.u32(fixture + 0x58)));
                 c.set(19, first_byte);
-                if (order == MatchDayOrder::phases) {
-                    pending.push_back({fixture, first_byte});
+                if (order == MatchDayOrder::phases || order == MatchDayOrder::parallel) {
+                    pending.push_back({fixture, first_byte, order == MatchDayOrder::parallel ? std::make_unique<PlayContext>() : nullptr});
                     if (pending.size() >= stretch_limit) flush(pending);
                     continue;
                 }
