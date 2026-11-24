@@ -5406,3 +5406,74 @@ if(EXISTS "${CM_BENCHMARK_DIR}/world/season-day/initial.snapshot")
     add_test(NAME competition_values
         COMMAND cm-competition-values "${CM_BENCHMARK_DIR}/world/season-day/initial.snapshot" --out "${CMAKE_CURRENT_BINARY_DIR}/competition-values.toml" --check)
 endif()
+
+# Profile-guided optimisation of everything the app and cm-world-replay link (docs/native-build-storage.md,
+# "Profile-guided optimisation"; tools/dev.sh pgo). Both options are OFF by default and change no flag then.
+#   CM_PGO_GENERATE      IR-level instrumentation (-fprofile-generate); a build for training runs only.
+#   CM_PGO_PAGES=<file>  with it: of the generated pages, instrument only those listed (one page_XXXXX per line).
+#                        Instrumenting all of them doubles their code and the executable no longer links (arm64
+#                        branches reach 128 MB, the linker's islands add one hop, so about 250 MB of code at most).
+#   CM_PGO_PROFILE=<f>   -fprofile-use=<f>, an indexed .profdata merged from those runs. Functions whose control
+#                        flow changed since the training are ignored, so a stale profile still builds; the
+#                        warnings about unprofiled, missing and out-of-date functions are off for that reason
+#                        (the mismatch one is a backend error under -Werror, and `main` of every training
+#                        executable shares one profile name, so even a fresh profile triggers it).
+# Floating-point flags are untouched (-ffp-contract=off stays where it is, no -ffast-math).
+option(CM_PGO_GENERATE "Instrument the game libraries and replay tools to record a PGO profile" OFF)
+set(CM_PGO_PROFILE "" CACHE FILEPATH "Merged .profdata to optimise the game libraries and replay tools with")
+set(CM_PGO_PAGES "" CACHE FILEPATH "With CM_PGO_GENERATE: the generated pages to instrument (default: all)")
+if(CM_PGO_GENERATE AND CM_PGO_PROFILE)
+    message(FATAL_ERROR "CM_PGO_GENERATE and CM_PGO_PROFILE are exclusive")
+endif()
+if(CM_PGO_PROFILE AND NOT EXISTS "${CM_PGO_PROFILE}")
+    message(FATAL_ERROR "CM_PGO_PROFILE does not exist: ${CM_PGO_PROFILE}")
+endif()
+if(CM_PGO_GENERATE OR CM_PGO_PROFILE)
+    set(cm_pgo_targets cm_yoga cm_form_layout cm_audio cm_ui cm_snapshot_stream cm_aot cm_probe_host
+        cm-world-replay cm-match-replay cm-native-prototype)
+    foreach(target IN LISTS cm_pgo_targets)
+        if(NOT TARGET ${target})
+            continue()
+        endif()
+        if(CM_PGO_GENERATE)
+            target_link_options(${target} PUBLIC -fprofile-generate)
+            target_compile_options(${target} PRIVATE -fprofile-generate)
+        else()
+            target_compile_options(${target} PRIVATE "-fprofile-use=${CM_PGO_PROFILE}"
+                -Wno-profile-instr-unprofiled -Wno-profile-instr-out-of-date -Wno-profile-instr-missing
+                "SHELL:-mllvm -no-pgo-warn-mismatch" "SHELL:-mllvm -no-pgo-warn-mismatch-comdat-weak")
+        endif()
+    endforeach()
+    get_target_property(cm_pgo_sources cm_aot SOURCES)
+    if(CM_PGO_GENERATE AND CM_PGO_PAGES)
+        # Handwritten code and the listed pages are instrumented; the other pages keep their normal code
+        # (-fno-profile-generate after the target's -fprofile-generate).
+        file(STRINGS "${CM_PGO_PAGES}" cm_pgo_listed)
+        set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS "${CM_PGO_PAGES}")
+        foreach(source IN LISTS cm_pgo_sources)
+            if(source MATCHES "(^|/)generated/page_[0-9a-f]+\\.cpp$")
+                get_filename_component(page "${source}" NAME_WE)
+                if(NOT page IN_LIST cm_pgo_listed)
+                    set_property(SOURCE "${source}" APPEND PROPERTY COMPILE_OPTIONS -fno-profile-generate)
+                endif()
+                set_property(SOURCE "${source}" APPEND PROPERTY OBJECT_DEPENDS "${CM_PGO_PAGES}")
+            endif()
+        endforeach()
+    endif()
+    if(CM_PGO_PROFILE)
+        # A refreshed profile of the same path must rebuild the objects that read it.
+        set_property(SOURCE ${cm_pgo_sources} APPEND PROPERTY OBJECT_DEPENDS "${CM_PGO_PROFILE}")
+    endif()
+endif()
+
+# The 600-advance match intervals of .local/benchmarks/match, run as the app runs them (initial.snapshot and
+# match.txt of a capture directory; the harness is machine-local, so the target exists only where it does):
+# training input for the match engine, which cm-world-replay's day and week captures hardly reach, and its timing.
+if(EXISTS "${CM_BENCHMARK_DIR}/harness/match_benchmark_app.cpp")
+    add_executable(cm-match-benchmark "${CM_BENCHMARK_DIR}/harness/match_benchmark_app.cpp")
+    target_link_libraries(cm-match-benchmark PRIVATE cm_match_debugger_factory)
+    target_compile_options(cm-match-benchmark PRIVATE -ffp-contract=off)
+    if(CM_PGO_GENERATE)
+        target_compile_options(cm-match-benchmark PRIVATE -fprofile-generate)
+    endif()
+endif()

@@ -136,3 +136,37 @@ signed ARM64 app remained the accepted tree-mutation build. The subsequent
 [aggregate-object delivery](native-aggregate-object-reconstruction.md) reuses
 that seed for a fresh consistent production build. Save/Load is **not retested**
 and performance is **not benchmarked**. The full C++23 port remains active.
+
+## Profile-guided optimisation
+
+`tools/dev.sh pgo` refreshes a Clang profile that `tools/dev.sh build` then uses for the game libraries (`cm_aot`
+and what it links), `cm-world-replay` and the app. Everything lives in `.local/current/pgo/` (never committed):
+`cm.profdata` and `cm.profdata.ok`, whose first line is the compiler the profile was written for and whose second
+says when, at which commit and on which captures.
+
+- `tools/dev.sh pgo` runs the steps `select`, `instrument`, `train`, `merge` and a normal build (about 30 minutes in
+  all, mostly the two full builds); any step can be run alone and an interrupted `instrument` resumes, as it is an
+  incremental build in the same build directory.
+  - `select` replays the four world captures with `--profile` and lists the busiest generated pages
+    (`tools/pgo_pages.py`, 200 pages or 98% of the samples) in `pgo/pages.txt`. Instrumenting all 1,922 pages doubles
+    their code and the executable no longer links: arm64 branches reach 128 MB, the linker adds one island hop, so
+    about 250 MB of code is the limit (the app is 215 MB without instrumentation; the instrumented replay tool is
+    226 MB). The other pages keep their normal code in the training build and get none from the profile.
+  - `instrument` reconfigures with `CM_PGO_GENERATE=ON` (IR-level `-fprofile-generate`, chosen over front-end
+    `-fprofile-instr-generate` because it counts fewer places and optimises better) and builds only
+    `cm-world-replay`, `cm-match-replay` and `cm-match-benchmark`.
+  - `train` runs season-day, same-save-continue, save-info and database with `--timing` (the mode the game runs in)
+    and 100 of the 600-advance intervals of each `.local/benchmarks/match` capture through `cm-match-benchmark`
+    (a harness in `.local/benchmarks/harness`; one interval is only 3.5 million instructions);
+    `CM_PGO_TRAIN="day week"` trains on a subset.
+  - `merge` runs `llvm-profdata merge -sparse` and deletes the raw files.
+- `tools/dev.sh build` passes `-DCM_PGO_PROFILE=<cm.profdata>` while the marker names the compiler in use and
+  switches `CM_PGO_GENERATE` off whatever the tree held, so an instrumented tree never survives a build;
+  `tools/dev.sh install` refuses one. `CM_PGO=off tools/dev.sh build` ignores the profile;
+  `tools/dev.sh pgo clear` deletes it.
+- The profile is not tied to the sources. Clang drops the profile of a function whose control flow changed (the
+  warnings about unprofiled, missing and out-of-date functions are off, so the build stays quiet) and optimises it
+  as before; refresh the profile after larger changes. A new profile of the same path rebuilds every object.
+- Results do not change: the options add no floating-point flag (`-ffp-contract=off` stays on the libraries,
+  nothing like `-ffast-math`); check a new profile with the strict replays (same instruction counts) and the
+  paired timing of the Performance row in CLAUDE.md.
