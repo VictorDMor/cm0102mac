@@ -3,6 +3,7 @@
 #include "guest_scratch.hpp"
 #include "guest_worker.hpp"
 #include "match_play.hpp"
+#include "tactics.hpp"
 
 #include <array>
 #include <algorithm>
@@ -307,24 +308,40 @@ struct Driver {
         call(0x10743120, 0x101cc5f0, {screen, text, 0xffffffff, 0, 0xffffffff});
         listed = true; c.set(20, 1);
     }
+    // The number of contact notes the injury manager holds (the list at +0x28, its count a halfword).
+    std::int32_t contact_notes() const {
+        const auto manager = c.u32(c.toc(-0x7ba0)), list = manager ? c.u32(manager + 0x28) : 0;
+        return list ? c.u16(list) : 0;
+    }
     // CM_MATCH_LOG=FILE: one line per background match the driver finishes, for comparing the orders' results
-    // (TASKS.md, step 6): game day, competition, the two clubs, goals, penalties (-1: none).
-    void log_result(std::uint32_t fixture) {
+    // (TASKS.md, step 6): game day, competition, the two clubs, goals, penalties (-1: none); then the four
+    // counters of the match the referee's grade is made from (0x101fd900: two per side, taken to be sendings-off
+    // and cautions), the contact notes the play added (-1: not counted), and each side's formation in the
+    // tactics object as the match ends.
+    void log_result(std::uint32_t fixture, std::int32_t notes) {
         static std::FILE* const file = [] { const char* path = std::getenv("CM_MATCH_LOG"); return path && *path ? std::fopen(path, "a") : nullptr; }();
         if (!file) return;
-        std::fprintf(file, "%u %d %08x %08x %d %d %d %d\n", unsigned(c.u16(c.u32(GuestScratch::game_toc - 0x7b80))), c.i32(fixture + 4),
-                     c.u32(fixture + 0x20), c.u32(fixture + 0x24), c.i8(fixture + 0x47), c.i8(fixture + 0x48), c.i8(fixture + 0x4b), c.i8(fixture + 0x4c));
+        const auto match = c.u32(fixture + 0x58);
+        const tactics::Tactics table(c, c.u32(c.toc(-0x7a6c)));
+        // A club's first word is its index, the slot of its team in the tactics object (as TACTICS 0x103af130 reads it).
+        const auto formation = [&](std::uint32_t club) {
+            return club && c.i32(club) >= 0 && c.i32(club) < table.team_count() ? int(table.team(c.i32(club)).formation()) : -1;
+        };
+        std::fprintf(file, "%u %d %08x %08x %d %d %d %d %d %d %d %d %d %d %d\n", unsigned(c.u16(c.u32(GuestScratch::game_toc - 0x7b80))), c.i32(fixture + 4),
+                     c.u32(fixture + 0x20), c.u32(fixture + 0x24), c.i8(fixture + 0x47), c.i8(fixture + 0x48), c.i8(fixture + 0x4b), c.i8(fixture + 0x4c),
+                     c.u8(match + 0xe04b), c.u8(match + 0xe04c), c.u8(match + 0xe081), c.u8(match + 0xe082), notes,
+                     formation(c.u32(fixture + 0x20)), formation(c.u32(fixture + 0x24)));
         std::fflush(file);
     }
     // After the last minute: the result record, the post-match routine, the match object released.
-    void finish(std::uint32_t fixture, std::uint32_t first_byte) {
+    void finish(std::uint32_t fixture, std::uint32_t first_byte, std::int32_t notes) {
         const auto result = call(0x10773520, 0x101cc2c8, {0xdfc});
         c.set(21, result);
         if (result) call(0x10773320, 0x101cc2e8, {result + 0x120, c.toc(-0x7acc), 0, 0x664, 2});
         c.put32(fixture + 0x60, result);
         if (!c.u32(fixture + 0x60)) { out_of_memory(0x101cc2fc, 0xa8, 0x60, 0x3a6); return; }
         call(0x1029e9e0, 0x101cc358, {c.u32(post_match), c.u32(fixture + 0x58), c.u32(fixture + 0x60)});
-        log_result(fixture);
+        log_result(fixture, notes);
         call(0x101d3e50, 0x101cc364, {c.u32(fixture + 0x58), 1});
         c.put32(fixture + 0x58, 0);
         call(0x10430550, 0x101cc378, {c.u32(calendar), fixture + 4});
@@ -410,7 +427,7 @@ struct Driver {
             // What the play held back, on the frame's unused report buffer (0x88, 32 bytes).
             if (match.play) replay_deferred(c, *match.play, sp() + 0x88);
             c.set(18, match.fixture); c.set(19, match.first_byte);
-            finish(match.fixture, match.first_byte);
+            finish(match.fixture, match.first_byte, match.play ? std::int32_t(match.play->notes.size()) : -1);
         }
         pending.clear();
     }
@@ -466,8 +483,9 @@ struct Driver {
                     if (pending.size() >= stretch_limit) flush(pending);
                     continue;
                 }
+                const auto notes_before = contact_notes();
                 play(fixture, 0x101cc280, true);
-                finish(fixture, first_byte);
+                finish(fixture, first_byte, contact_notes() - notes_before);
             }
             if (again) continue;
             flush(pending);
