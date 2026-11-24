@@ -10,6 +10,7 @@
 #include <string>
 #include <tuple>
 #include <unordered_map>
+#include <unordered_set>
 #include <vector>
 
 namespace cm::aot {
@@ -21,6 +22,7 @@ constexpr std::uint32_t data_low = 0x108b3a90, data_high = 0x10bf7e30, heap_low 
 constexpr std::uint32_t day_driver = 0x101cb9d0, scheduled = 0x101cd5c0, watched = 0x101ccdb0, statistics = 0x10370e10,
                         construct = 0x101d16a0, set_up = 0x101d1760, destroy = 0x101d3e50, advance = 0x101d3f60;
 constexpr std::uint32_t match_object_size = 0xdfc;
+constexpr std::uint32_t small_data_low = 0x108bba90 - 0x8000, small_data_high = 0x108bba90 + 0x8000;
 // The match RNG's words are reached through four TOC slots (seed, table begin, table end, cursor); the C runtime's state is fixed.
 constexpr std::uint32_t rng_slots = 0x108b3f00, crt_rng = 0x108b85cc;
 // Return addresses of the calls of those routines (the instruction after each `bl`), sorted.
@@ -60,16 +62,24 @@ struct MatchSharing::Impl final : MemoryObserver, AllocatorBoundaryObserver {
     struct Shadow {
         std::uint32_t low, words;
         std::uint32_t *writer, *writer_pc, *reader, *birth;   // per 4-byte word; calloc keeps untouched pages unmapped
+        // The play phase alone (inside advance): the match that last wrote and last read the word there, with
+        // the code that did, and the match whose call allocated the block the word is in.
+        std::uint32_t *play_writer, *play_writer_pc, *play_reader, *play_reader_pc, *block_owner, *play_live;
         Shadow(std::uint32_t l, std::uint32_t h) : low(l), words((h - l + 3) / 4),
             writer(static_cast<std::uint32_t*>(std::calloc(words, 4))), writer_pc(static_cast<std::uint32_t*>(std::calloc(words, 4))),
-            reader(static_cast<std::uint32_t*>(std::calloc(words, 4))), birth(static_cast<std::uint32_t*>(std::calloc(words, 4))) {}
-        ~Shadow() { std::free(writer); std::free(writer_pc); std::free(reader); std::free(birth); }
+            reader(static_cast<std::uint32_t*>(std::calloc(words, 4))), birth(static_cast<std::uint32_t*>(std::calloc(words, 4))),
+            play_writer(static_cast<std::uint32_t*>(std::calloc(words, 4))), play_writer_pc(static_cast<std::uint32_t*>(std::calloc(words, 4))),
+            play_reader(static_cast<std::uint32_t*>(std::calloc(words, 4))), play_reader_pc(static_cast<std::uint32_t*>(std::calloc(words, 4))),
+            block_owner(static_cast<std::uint32_t*>(std::calloc(words, 4))), play_live(static_cast<std::uint32_t*>(std::calloc(words, 4))) {}
+        ~Shadow() {
+            for (auto* table : {writer, writer_pc, reader, birth, play_writer, play_writer_pc, play_reader, play_reader_pc, block_owner, play_live}) std::free(table);
+        }
     };
     Shadow data{data_low, data_high}, heap{heap_low, heap_high};
     struct Span { std::uint32_t entry, owner, sp; bool below; std::uint64_t executed; };
     std::vector<Span> spans;
     struct Match {
-        std::uint32_t object = 0, caller = other, advances = 0;
+        std::uint32_t object = 0, caller = other, advances = 0, day = 0;
         bool advanced = false, finished = false;
         std::uint64_t instructions = 0, stack_reads = 0, stack_writes = 0, own_reads = 0, own_writes = 0;
         std::uint64_t reads = 0, writes = 0;                       // outside the stack and the match object
@@ -92,6 +102,42 @@ struct MatchSharing::Impl final : MemoryObserver, AllocatorBoundaryObserver {
     // What other owners read of what matches wrote (the matches' outputs), distinct words by reader class.
     std::map<std::uint32_t, std::uint64_t> outputs_read_by;
     std::vector<std::string> log;
+    // Conflicts between the play phases of two matches of one game day: what would race, or depend on the
+    // order of threads, if those phases ran at once. Outside each match's stack, object and own blocks, the
+    // RNG and the allocator. 0: a play reads what another play wrote; 1: both write; 2: a play writes what
+    // another play read. Key: (class, the other play's PC, this PC).
+    struct Conflict { std::uint64_t accesses = 0; std::uint32_t sample = 0; std::unordered_set<std::uint32_t> words; std::string block; };
+    // Live blocks of the C facades: size, the owner whose call allocated them and that call's return address.
+    struct Live { std::uint32_t size, owner, link; };
+    std::map<std::uint32_t, Live> live;
+    std::uint32_t pending_link = 0;
+    std::string block_of(std::uint32_t address) {
+        auto after = live.upper_bound(address);
+        if (after == live.begin() || address - std::prev(after)->first >= std::prev(after)->second.size) return address >= heap_low ? "heap, no dated block" : "static data";
+        const auto& [start, block] = *std::prev(after);
+        return "block+" + hex_text(address - start) + " of " + std::to_string(block.size) + " bytes allocated by " +
+               (block.owner >= first_match ? "match " + std::to_string(block.owner - first_match) : owner_name(block.owner)) + " at " + hex_text(block.link);
+    }
+    std::map<std::tuple<int, std::uint32_t, std::uint32_t>, Conflict> conflicts;
+    std::uint64_t play_accesses = 0;
+    void conflict(int kind_of, std::uint32_t other_pc, std::uint32_t address) {
+        auto& entry = conflicts[{kind_of, other_pc, s.pc}];
+        ++entry.accesses;
+        if (!entry.sample) { entry.sample = address; entry.block = block_of(address) + ", this match " + std::to_string(owner() - first_match); }
+        if (entry.words.size() < 200000) entry.words.insert(address);
+    }
+    void play_access(Shadow& map, std::uint32_t word, std::uint32_t address, bool write, std::uint32_t o) {
+        ++play_accesses;
+        const auto other_today = [&](std::uint32_t match) { return match && match != o && matches[match - first_match].day == days; };
+        if (write) {
+            if (other_today(map.play_writer[word])) conflict(1, map.play_writer_pc[word], address);
+            else if (map.play_writer[word] != o && other_today(map.play_reader[word])) conflict(2, map.play_reader_pc[word], address);
+            map.play_writer[word] = o; map.play_writer_pc[word] = s.pc;
+        } else {
+            if (other_today(map.play_writer[word])) conflict(0, map.play_writer_pc[word], address);
+            if (map.play_reader[word] != o) { map.play_reader[word] = o; map.play_reader_pc[word] = s.pc; }
+        }
+    }
     // Blocks allocated while a match's advance runs: where each one is freed. A play phase on its own thread
     // must hand the survivors over to the code that frees them.
     struct Born { std::uint32_t owner, size; };
@@ -159,6 +205,7 @@ struct MatchSharing::Impl final : MemoryObserver, AllocatorBoundaryObserver {
         }
         matches.push_back({});
         matches.back().object = object;
+        matches.back().day = std::uint32_t(days);
         for (auto span = spans.rbegin(); span != spans.rend(); ++span)
             if (span->owner < first_match) { matches.back().caller = span->owner; break; }
         return current[object] = first_match + std::uint32_t(matches.size() - 1);
@@ -252,6 +299,18 @@ struct MatchSharing::Impl final : MemoryObserver, AllocatorBoundaryObserver {
         for (auto word = (start - map->low) / 4, last = std::uint32_t((start + std::max<std::uint64_t>(size, 1) - 1 - map->low) / 4);
              word <= last && word < map->words; ++word) {
             const auto address = map->low + word * 4, previous = map->writer[word];
+            // The TOC and the small data around it (r2 - 0x8000 up): what a play phase writes there, and what
+            // code outside the play phases then reads of it. A worker with a private copy of that area keeps
+            // the first to itself and would hide the second. 3: read outside; 4: every word written.
+            if (address >= small_data_low && address < small_data_high && kind(address) == 2) {
+                const bool playing = match && in_advance();
+                if (write) {
+                    if (playing) { conflict(4, 0, address); map->play_live[word] = s.pc; } else map->play_live[word] = 0;
+                } else if (!playing && map->play_live[word]) conflict(3, map->play_live[word], address);
+            }
+            // The whole match object (0xe0bc bytes; the original reuses one address, a phased day has one per match).
+            if (match && in_advance() && !(address >= match->object && address < match->object + 0xe0bc) && map->block_owner[word] != o && kind(address) == 2)
+                play_access(*map, word, address, write, o);
             const bool seen = map->reader[word] == o;
             if (write) {
                 if (match && !own && previous != o) {
@@ -297,7 +356,8 @@ struct MatchSharing::Impl final : MemoryObserver, AllocatorBoundaryObserver {
             pending_size = entry == 0x10775130 ? state.r<4>(12) : entry == 0x107751b0 ? state.r<4>(16)
                          : entry == 0x10775200 ? state.r<4>(12) * state.r<4>(16) : 0;
             if (!pending_size && entry != 0x10775170) ++unsized_allocator_calls;
-            if (entry == 0x10775170 || entry == 0x107751b0) freed(std::uint32_t(state.r<4>(12)));
+            if (entry == 0x10775170 || entry == 0x107751b0) { freed(std::uint32_t(state.r<4>(12))); live.erase(std::uint32_t(state.r<4>(12))); }
+            pending_link = std::uint32_t(state.r<4>(4128));
             ++allocator_by_owner_class[owner_class(owner())];
             if (auto* match = match_of(owner())) ++match->allocator_calls;
         }
@@ -307,9 +367,10 @@ struct MatchSharing::Impl final : MemoryObserver, AllocatorBoundaryObserver {
         const auto block = std::uint32_t(state.r<4>(12));
         if (block >= heap_low && block < heap_high && pending_size < 0x4000000) {
             ++sized_allocations;
+            live[block] = {std::uint32_t(pending_size), owner(), pending_link};
             if (in_advance()) { ++born_total; born_bytes += pending_size; born[block] = {owner(), std::uint32_t(std::min<std::uint64_t>(pending_size, 0xffffff)) | advance_serial << 24}; }
             for (auto word = (block - heap_low) / 4, last = std::uint32_t((block + pending_size - 1 - heap_low) / 4); word <= last && word < heap.words; ++word)
-                heap.birth[word] = last_finished_ever;
+                { heap.birth[word] = last_finished_ever; heap.block_owner[word] = match_of(owner()) ? owner() : 0; }
         }
         pending_size = 0;
     }
@@ -395,6 +456,22 @@ void MatchSharing::report(std::ostream& out) const {
                               hex_text(i.matches[n].object) + ")";
             row(name.c_str(), i.matches[n]);
         }
+    static const char* const conflict_names[] = {"play conflicts, a play reads what another play of the day wrote",
+        "play conflicts, two plays of the day write", "play conflicts, a play writes what another play of the day read",
+        "small data, code outside the play phases reads what a play wrote", "small data, written by a play"};
+    out << "\naccesses of play phases outside their stack, object, own blocks, RNG and allocator: " << i.play_accesses << '\n';
+    for (int kind_of = 0; kind_of < 5; ++kind_of) {
+        std::vector<std::pair<std::tuple<int, std::uint32_t, std::uint32_t>, const Impl::Conflict*>> rows;
+        std::uint64_t words = 0, accesses = 0;
+        for (const auto& [key, value] : i.conflicts)
+            if (std::get<0>(key) == kind_of) { rows.push_back({key, &value}); words += value.words.size(); accesses += value.accesses; }
+        std::sort(rows.begin(), rows.end(), [](const auto& a, const auto& b) { return a.second->words.size() > b.second->words.size(); });
+        out << "\n-- " << conflict_names[kind_of] << ": " << words << " distinct words, " << accesses << " accesses, " << rows.size() << " PC pairs --\n";
+        for (std::size_t n = 0; n < std::min<std::size_t>(rows.size(), 600); ++n)
+            out << "  writer " << Hex{std::get<1>(rows[n].first)} << " -> " << (kind_of == 0 || kind_of == 3 ? "reader " : "writer ") << Hex{std::get<2>(rows[n].first)}
+                << ": words=" << rows[n].second->words.size() << " accesses=" << rows[n].second->accesses << " sample=" << Hex{rows[n].second->sample}
+                << " in " << rows[n].second->block << '\n';
+    }
     static const char* const kinds[] = {"RNG words", "allocator", "game data"};
     for (const int flow : {2, 102, 12, 112, 1, 101, 11, 111, 0, 10})
         for (const bool overwrite : {false, true}) {

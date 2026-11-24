@@ -3,6 +3,10 @@
 The live work list. Claude keeps it current during a run; read this instead of
 the scrollback. Remove ticked items once their commit is pushed.
 
+## Screens asked for alongside (Victor, 2026-11-24)
+
+- [ ] Redesign and reconstruct in C++ the quit-the-game screen and the screen that leads into the match ("avançar para o jogo"). A read-only survey of both screens and of how redesigned screens are built here is running; the implementation starts when the tree is free of the parallel-play build.
+
 ## Holiday mode (Victor, 2026-11-24)
 
 Asked while the parallel play phase was in progress; both wait for it to land.
@@ -48,7 +52,17 @@ Victor first approved it as an option, then the same day as the default ("vamos 
   - `in_order` on the reference week: same digest of memory, stacks included, and registers as the generated routine (d39c51f9029e1c12), every replay check passing; a first version with wrong loop counters in r22/r23 was caught at the first import. The week enters the driver 21 times: 44 matches set up and played, 12 result lines (competition form without penalties), 49 results filed, the screen pump 49 times. Not reached there: fixtures a human manager plays or watches (part 1), the restart for a human club, result lines with penalties or without a competition, the notification of a human club, the redraw, the out-of-memory reports.
   - `phases` in the live game (multi-league career on holiday, 24 August to 1 September 2001, one thread, the game's own RNG): the week runs to the end, nothing in the log. Results not compared with anything: the order of draws differs by design, and the comparison is step 6.
   - What `phases` still does on one thread and in the game's heap: step 3 moves the play to workers.
-- [ ] 3. Inside the play phase, deferred to the third phase: `record_result` (formation table), contact notes, the referee record, the title check. One RNG stream per match, seeded from one draw of the main sequence at set-up, so a save still gives the same scores whatever the number of threads.
+- [ ] 3. The play phase on workers. Measured first (`--match-sharing`, new sections "play conflicts" and "small data"; `.local/tools/play_conflicts.py` names the routines): what the play phases of two matches of one game day both touch outside their stack, their match object, the blocks their own match allocated, the RNG and the allocator. Reference week (44 full matches of the day driver among 404): 210M such accesses, and only these conflicts:
+  - the formation results table: TACTICS 0x103af130 `record_result` (once per match, at full time, match_eng_advance_loop.cpp:396) writes it, MATCH_MAN 0x1020d7d0 reads it during play (108 words read, 77 written by two plays);
+  - the contact-note list of the injury manager (+0x28): INJURY 0x10186cd0 `note_entry` (from match_eng_contact_injury.cpp:35) through the list routines 0x10738d10/0x10738e00 (16-byte nodes; 23 + 8 words);
+  - static scratch: DATE 0x10717b20, 0x10718130, 0x10717dd0 at 0x1098dba8-0x1098dbc4 (TOC cells -0x3fc0, -0x3fbc and neighbours), MATCH_ENG 0x101d6a90 with MATCH_MAN 0x10211e70 at 0x1091e154 (cell -0x7b78), MATCH_ENG 0x101e4130/0x101d3c90 at 0x108b8180 and COMP_STATS 0x10459b50 at 0x108b8320 (both small data inside the TOC's own 64 KiB), INJURY 0x10186cd0's list cursor (2 words).
+  - Small data (r2 - 0x8000 to r2 + 0x8000): a play writes 10 distinct words there (the two above), and code outside the play phases reads none of what a play wrote.
+  - Not seen in that week, so not on the list yet: the referee record, the title check, a person in two matches. The live measurement on the multi-league career decides.
+  Design that follows (not built yet):
+  - **A private TOC per worker.** The game reaches its RNG through four TOC cells (-0x7b90 salt cell, -0x7b8c pool start, -0x7b88 end cell, -0x7b84 cursor cell; the draw is inline in 167 files, always through r2), and its statics through TOC cells too. r2 is loaded from memory only by the 260 glue stubs (`lwz r2,4(r12)`; owner native/import_descriptor.cpp:29), native/callbacks.cpp:21 and the comparator glue; everything else restores its own r2 from its frame. So a worker runs with r2 on a copy of the TOC's 64 KiB (refreshed before each match), in which the salt and cursor cells point at the worker's own words (one stream per match, seeded from the game's cursor and salt at set-up and the fixture's index, so results do not depend on the number of threads) and the cells of the scratch statics point at private copies; the three TOC loads keep a worker's r2 when the vector names the game's TOC. The pool of 51,000 samples stays shared (read only; to confirm that no draw writes it).
+  - **Deferred to the post-match phase, in fixture order:** `record_result` (its owner queues the call on a worker), and the contact notes (on a worker `note_entry` merges into a per-match list on the host with the same rule and returns the same bytes; the real list gets the entries afterwards). A stale entry for the same person in the real list would change the bytes returned during play: accepted, noted.
+  - **Scratch heap** per worker (step 1b), which gets its live check here.
+  - The main thread only waits while workers play: the event pump runs between stretches, never during one.
 - [ ] 4. Per-context copies: list cursors, the sort's context globals, the C runtime's `rand` state, static scratch (MATCH_EVENTS, DATE, FIX_MAN). Quick matches and the human's match day stay sequential in the first version (their generated squads share one buffer).
 - [ ] 5. The mode's row in "Definições do Jogo" (parallel / original order) and its persistence; parallel by default after step 6, original order until then.
 - [ ] 6. Statistical validation: seasons simulated in both modes, compared on goals per game, home/away results, cards, injuries, champions, formations the AI uses. The stack leftovers the engine reads differ per thread: this is where a shift would show.
