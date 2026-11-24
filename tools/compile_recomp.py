@@ -195,6 +195,7 @@ from fifa_rankings_audit import FIFA_RANKINGS_ENTRIES, require_fifa_rankings_ind
 from cash_audit import CASH_ENTRIES, require_cash_index, cash_hook
 from awol_audit import AWOL_ENTRIES, require_awol_index, awol_hook
 from simulated_stats_audit import (SIMULATED_STATS_ENTRIES, simulated_stats_hook, require_simulated_stats_hooks)
+from match_day_driver_audit import MATCH_DAY_DRIVER_ENTRIES, match_day_driver_hook, require_match_day_driver_hooks
 from por_second_audit import POR_SECOND_ENTRIES, por_second_hook, require_por_second_hooks
 from ger_first_audit import GER_FIRST_ENTRIES, ger_first_hook, require_ger_first_hooks
 from african_nations_audit import AFRICAN_NATIONS_ENTRIES, african_nations_hook, require_african_nations_hooks
@@ -423,6 +424,7 @@ OWNER_REPLACEMENTS = (tuple((entry, module) for entry, module in SEMANTIC_REPLAC
                             and entry not in STAFF_CONTRACTS_ENTRIES) +
                       tuple((entry, "staff_contracts_adapter") for entry in STAFF_CONTRACTS_ENTRIES) +
                       tuple((entry, "simulated_stats_adapter") for entry in SIMULATED_STATS_ENTRIES) +
+                      tuple((entry, "match_day_driver") for entry in MATCH_DAY_DRIVER_ENTRIES) +
                       tuple((entry, "por_second_adapter") for entry in POR_SECOND_ENTRIES) +
                       tuple((entry, "ger_first_adapter") for entry in GER_FIRST_ENTRIES) +
                       tuple((entry, "african_nations_adapter") for entry in AFRICAN_NATIONS_ENTRIES) +
@@ -1703,6 +1705,7 @@ def generate_page(page, instructions, selected, local_temporaries=True, userops=
                   (AWOL_TAKEOVERS if awol_hooks else frozenset()) |
                   (frozenset(STAFF_CONTRACTS_ENTRIES) if staff_contracts_hooks else frozenset()) |
                   (frozenset(SIMULATED_STATS_ENTRIES) if simulated_stats_hooks else frozenset()) |
+                  frozenset(MATCH_DAY_DRIVER_ENTRIES) |
                   (frozenset(POR_SECOND_ENTRIES) if por_second_hooks else frozenset()) |
                   (frozenset(GER_FIRST_ENTRIES) if ger_first_hooks else frozenset()) |
                   (frozenset(AFRICAN_NATIONS_ENTRIES) if african_nations_hooks else frozenset()) |
@@ -1993,6 +1996,8 @@ def generate_page(page, instructions, selected, local_temporaries=True, userops=
         code.insert(1, '#include "awol_adapter.hpp"')
     if fifa_rankings_hooks and page_addresses & set(FIFA_RANKINGS_ENTRIES):
         code.insert(1, '#include "fifa_rankings_adapter.hpp"')
+    if page_addresses & set(MATCH_DAY_DRIVER_ENTRIES):
+        code.insert(1, '#include "match_day_driver.hpp"')
     if simulated_stats_hooks and page_addresses & set(SIMULATED_STATS_ENTRIES):
         code.insert(1, '#include "simulated_stats_adapter.hpp"')
     if por_second_hooks and page_addresses & set(POR_SECOND_ENTRIES):
@@ -2616,6 +2621,8 @@ def generate_page(page, instructions, selected, local_temporaries=True, userops=
         if staff_contracts_hooks and a in STAFF_CONTRACTS_ENTRIES:
             code[hooks_start:] = [line for line in code[hooks_start:] if not OWNER_HOOK.fullmatch(line)]
             code.append(staff_contracts_hook(a))
+        if a in MATCH_DAY_DRIVER_ENTRIES:
+            code.append(match_day_driver_hook(a))
         if simulated_stats_hooks and a in SIMULATED_STATS_ENTRIES:
             code[hooks_start:] = [line for line in code[hooks_start:] if not OWNER_HOOK.fullmatch(line)]
             code.append(simulated_stats_hook(a))
@@ -3106,6 +3113,7 @@ def generate_page(page, instructions, selected, local_temporaries=True, userops=
         require_date_hooks(page, instructions, result)
     if staff_contracts_hooks:
         require_staff_contracts_hooks(page, instructions, result)
+    require_match_day_driver_hooks(page, instructions, result)
     if simulated_stats_hooks:
         require_simulated_stats_hooks(page, instructions, result)
     if por_second_hooks:

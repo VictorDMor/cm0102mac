@@ -3,6 +3,13 @@
 The live work list. Claude keeps it current during a run; read this instead of
 the scrollback. Remove ticked items once their commit is pushed.
 
+## Holiday mode (Victor, 2026-11-24)
+
+Asked while the parallel play phase was in progress; both wait for it to land.
+
+- [ ] Review holiday mode for speed. Nothing measured for it specifically yet: the multi-league week of 25 August 2001 on holiday is the week already sampled (118 s; play phase 32%, shortlist manager 37%, waiting 11%), and holiday draws result screens between days (the 11% waiting is a first suspect, not confirmed).
+- [ ] New feature: the player chooses the date of return from holiday. Needs from Victor before design: where the choice is made (the holiday dialog or the game settings), and whether return on a date replaces or joins the original's return conditions.
+
 ## Matches on several threads: what they share (Victor, 2026-11-24)
 
 Victor asked to measure before deciding on the parallel mode (it changes RNG order, so it stays his decision; a mode switch, sequential by default, is the proposal).
@@ -37,7 +44,10 @@ Victor first approved it as an option, then the same day as the default ("vamos 
   - Static mutable host state reachable from the play phase (audit by object symbols of the match, actor, ball, tactics, injury and runtime-core files, source read at each hit): nothing plain on the production path; atomics and thread-locals only (`active_scores` in match_eng_tactics_a_queue.cpp and the cached exception counter are per thread, sound while a call stays on one thread). Diagnostic switches are process-wide and would race: `match_eng_declining`, `match_man_declining`, match_pl's `declining`, `tactics_declining`, `injury_unit_declining` (flipped by `run_original_body`), `dispatch_probe`, `routine_checker`, the match PC profile, the guest profiler, the stack audit's bulk reader. So original/rewrite comparisons, profiles and audits run in original order only (the rule already), and the live `sharing` request must refuse while workers run. Shared boundary observers are sound only one call at a time.
   - Left for step 2: per-call cost of the worker hand-off (copies of registers, block records without a scratch heap, the diagnostics), which a pool of workers should set up once per day.
 - [ ] `modern_allocator_equivalence` fails before this work too: "access-prefix fault 0/19 PC expected=0x107743e0 actual=0x107743ec" (initialize_block; looks like the stale fault-PC expectation of block accounting, as stdlib_core had). The `match_engine_*` tests are Not Run since `.local` was rebuilt (their captures are gone).
-- [ ] 2. The day driver 0x101cb9d0 (3,640 bytes, still generated) in C++, checked against the original as any module, then its loop split in three phases behind the option: set-up in order, play, post-match in order.
+- [x] 2. The day driver 0x101cb9d0 in C++ (native/match_day_driver.cpp, written from the listing; hook through tools/match_day_driver_audit.py), with three orders (`MatchDayOrder`, for now from `CM_MATCH_DAY_ORDER`): `original` declines to the generated routine (the default and the reference), `in_order` runs the C++ match by match, `phases` sets up every match of a stretch of the day, plays them, then runs the post-match work in fixture order (a stretch ends at a fixture of a human manager's club, which restarts the day through 0x101cd5c0, and at the end of the list).
+  - `in_order` on the reference week: same digest of memory, stacks included, and registers as the generated routine (d39c51f9029e1c12), every replay check passing; a first version with wrong loop counters in r22/r23 was caught at the first import. The week enters the driver 21 times: 44 matches set up and played, 12 result lines (competition form without penalties), 49 results filed, the screen pump 49 times. Not reached there: fixtures a human manager plays or watches (part 1), the restart for a human club, result lines with penalties or without a competition, the notification of a human club, the redraw, the out-of-memory reports.
+  - `phases` in the live game (multi-league career on holiday, 24 August to 1 September 2001, one thread, the game's own RNG): the week runs to the end, nothing in the log. Results not compared with anything: the order of draws differs by design, and the comparison is step 6.
+  - What `phases` still does on one thread and in the game's heap: step 3 moves the play to workers.
 - [ ] 3. Inside the play phase, deferred to the third phase: `record_result` (formation table), contact notes, the referee record, the title check. One RNG stream per match, seeded from one draw of the main sequence at set-up, so a save still gives the same scores whatever the number of threads.
 - [ ] 4. Per-context copies: list cursors, the sort's context globals, the C runtime's `rand` state, static scratch (MATCH_EVENTS, DATE, FIX_MAN). Quick matches and the human's match day stay sequential in the first version (their generated squads share one buffer).
 - [ ] 5. The mode's row in "Definições do Jogo" (parallel / original order) and its persistence; parallel by default after step 6, original order until then.
