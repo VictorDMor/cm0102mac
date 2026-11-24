@@ -14,7 +14,14 @@ the scrollback. Remove ticked items once their commit is pushed.
 Asked while the parallel play phase was in progress; both wait for it to land.
 
 - [ ] Review holiday mode for speed. Nothing measured for it specifically yet: the multi-league week of 25 August 2001 on holiday is the week already sampled (118 s; play phase 32%, shortlist manager 37%, waiting 11%), and holiday draws result screens between days (the 11% waiting is a first suspect, not confirmed).
-- [ ] New feature: the player chooses the date of return from holiday. Needs from Victor before design: where the choice is made (the holiday dialog or the game settings), and whether return on a date replaces or joins the original's return conditions.
+- [ ] New feature: an optional return date in the holiday dialog (Victor, 2026-11-24: in the dialog itself, optional, and with no date chosen the holiday is the original's). Surveyed (read-only): 
+  - The dialog: opener 0x101c9e70, builder 0x101c9eb0 (522 instructions), handler 0x101ca6e0 (245), MANAGER_SCREENS, no C++ yet (only the layout pass native/holiday_layout.cpp); opened by the menu bar for action 1007. Seven setting rows (value links, action 3, row index at control+0x48) over five flag bytes of the human record (+0x9ab8); No = action 1, Yes = action 2. Yes is carried out in the menu bar (0x102a62a0-0x102a6410): `set_away(humans, 1, 0)`, the start tick stored in the record's setting word.
+  - "On holiday" is the human record's `away` byte (+0x9984; records of 0xa65c bytes in the table of TOC-0x7a54); every return of the original goes through `set_away(..., 0)` (native/human_manager_schedule.cpp:85): the menu's "Return from holiday ?", Manager Status, a booked fixture in the match day, low disk or memory.
+  - Where the date can live without touching the save's original bytes: the career's host member `native_rules.tmp` (native/career_rules.hpp, travels in the save archive, cleared on load or new career). Chosen unless Victor objects.
+  - The daily hook: GAME 0x1011b330 (per slot, from the world loop at 0x10119b30; generated): there the date (TOC-0x7b80 is the date record: day of year, year, slot) is compared and `set_away(humans, 0, manager)` called. The date is cleared inside `set_away(0)`, so it joins the original's own ways back.
+  - A control added to an original screen has one model here: `SettingsToggle::append` (native/settings_toggle.cpp:29-74), a host row built with the original cell routines and a host action. The original has no date-entry control.
+  - Open for Victor: how the date is chosen in the row (a link that steps through dates, or presets such as +1 week / +1 month / end of season).
+
 
 ## Matches on several threads: what they share (Victor, 2026-11-24)
 
