@@ -1,7 +1,11 @@
 #include "allocator_internal.hpp"
+#include "guest_scratch.hpp"
 
 namespace cm::aot::allocator {
+// The three routines every allocation goes through take the pool context in r3. A guest worker's calls, and
+// calls on a block of a worker's scratch heap, use that heap's pool instead (guest_scratch.hpp).
 void allocate(Abi& a) {
+    if(const auto pool=scratch_pool(a.s,0)) a.put(3,pool);
     a.capture_link(); a.compare(a.r(4)); a.save_link(0x10774e88); a.frame(64,0x10774e8c);
     if(!a.r(4)) a.put(3,0);
     else {
@@ -12,6 +16,7 @@ void allocate(Abi& a) {
     a.pop(64,0x10774ec4); a.restore_link(); a.finish();
 }
 void release(Abi& a) {
+    if(const auto pool=scratch_pool(a.s,a.r(4))) a.put(3,pool);
     a.capture_link(); a.compare(a.r(4)); a.save_link(0x10774ee8); a.frame(64,0x10774eec);
     if(a.r(4)) {
         a.load(5,a.r(4)-4,0x10774ef4); a.put(0,a.r(5)&1); a.record(a.r(0));
@@ -32,6 +37,7 @@ void move_reallocation(Abi& a) {
 }
 }
 void reallocate(Abi& a) {
+    if(const auto pool=scratch_pool(a.s,a.r(4))) a.put(3,pool);
     a.words(26,0x10774f40); a.capture_link(); a.put(30,a.r(4)); a.record(a.r(30)); a.put(29,a.r(3)); a.put(31,a.r(5));
     a.save_link(0x10774f54); a.frame(80,0x10774f58);
     if(!a.r(30)) { a.put(4,a.r(31)); a.call(0x10774e80,0x10774f68); }

@@ -44,6 +44,8 @@ std::atomic<std::uint8_t*> hardware_base{nullptr};
 HardwareFaultReporter fault_reporter = nullptr;
 void* fault_reporter_context = nullptr;
 struct sigaction previous_segv{}, previous_bus{};
+thread_local Memory* fault_view = nullptr;
+thread_local void* fault_view_context = nullptr;
 
 [[noreturn]] void hardware_fault_stop(std::uint64_t address, std::uint64_t host_pc) {
     if (auto* memory = hardware_memory.load()) memory->leave_hardware_bounds();
@@ -59,7 +61,11 @@ struct sigaction previous_segv{}, previous_bus{};
         std::snprintf(message, sizeof message,
                       "Unmapped data access at 0x%llx, past the 4 GiB guest space (hardware bounds; host pc 0x%llx)",
                       static_cast<unsigned long long>(address), static_cast<unsigned long long>(host_pc));
-    if (fault_reporter) fault_reporter(address, message, fault_reporter_context);
+    // A thread on a shared view: its view checks exactly from here on (the process exits; the region stays
+    // open), and the reporter reads the context that was running.
+    void* context = fault_reporter_context;
+    if (fault_view) { new Memory::ExactBounds(*fault_view); context = fault_view_context; }
+    if (fault_reporter) fault_reporter(address, message, context);
     else std::fprintf(stderr, "%s\n", message);
     std::fflush(stdout);
     std::fflush(stderr);
@@ -99,6 +105,10 @@ void hardware_fault_signal(int signal, siginfo_t* info, void* raw) {
 void set_hardware_fault_reporter(HardwareFaultReporter reporter, void* context) {
     fault_reporter = reporter;
     fault_reporter_context = context;
+}
+void set_hardware_fault_view(Memory* view, void* context) {
+    fault_view = view;
+    fault_view_context = context;
 }
 Memory::Memory() {
     // Only data is stored here. Never grant execute permission to these pages.

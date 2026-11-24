@@ -267,6 +267,10 @@ private:
 // The address is an offset into the reservation and may exceed 32 bits.
 using HardwareFaultReporter = void (*)(std::uint64_t address, const char* message, void* context);
 void set_hardware_fault_reporter(HardwareFaultReporter reporter, void* context);
+// For a thread that runs guest code on a shared view (Memory::share) of the hardware memory: a fault on this
+// thread puts `view` in exact mode too and gives the reporter `context` in place of the one set above.
+// Null clears it.
+void set_hardware_fault_view(Memory* view, void* context);
 
 [[noreturn, gnu::cold, gnu::noinline]] void instruction_budget_exhausted();
 // Instruction counts saturate rather than wrap (State::charge).
@@ -560,6 +564,10 @@ void run(State& state);
 // Execute a direct dependency call without callback argument marshalling or
 // restoration. Imports, callbacks and transcript boundaries use the same path.
 void run_until(State& state, std::uint32_t return_pc);
+// Gives `to` the diagnostic configuration of `from`: every `*_original` selection, the boundary observers and
+// the private module diagnostics (their counters included, as they stand). For a second context that must
+// choose routines as the first does (guest_worker.hpp).
+void copy_configuration(State& to, const State& from);
 bool bridge_import(State& state, const std::string& name);
 std::uint32_t allocate(State& state, std::uint32_t size, bool clear);
 void deallocate(State& state, std::uint32_t address);

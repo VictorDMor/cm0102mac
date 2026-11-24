@@ -5,6 +5,7 @@
 #include "application_exit.hpp"
 #include "import_bridge.hpp"
 #include "heap_changes.hpp"
+#include "guest_scratch.hpp"
 #include "stack_audit.hpp"
 #include <algorithm>
 
@@ -31,6 +32,8 @@ std::uint32_t allocate(State& s, std::uint32_t size, bool zero) {
         break;
     }
     if (!address) {
+        // A match that outgrows its worker's heap must not go on with a null block.
+        if (is_scratch(s)) throw std::runtime_error("A guest worker's scratch heap is exhausted");
         if (s.heap_end > 0x30000000 - reserved) { s.memory_error = -108; return 0; }
         address = s.heap_end;
         s.memory.map(address, reserved);
@@ -41,8 +44,10 @@ std::uint32_t allocate(State& s, std::uint32_t size, bool zero) {
     s.memory_error = 0;
     return address;
 }
-void deallocate(State& s, std::uint32_t address) {
-    if (!address) { s.memory_error = 0; return; }
+void deallocate(State& caller, std::uint32_t address) {
+    if (!address) { caller.memory_error = 0; return; }
+    // A block of a worker's scratch heap returns to that worker's records, whoever releases it.
+    State& s = heap_records(caller, address);
     auto allocated = s.allocated.find(address);
     if (allocated == s.allocated.end()) throw std::runtime_error("Invalid or double DisposePtr");
     auto size = (std::max(allocated->second, 1u) + 15u) & ~15u;
@@ -64,7 +69,7 @@ void deallocate(State& s, std::uint32_t address) {
         const auto merged = next->first;
         s.available.erase(next); changed(s, 1, merged, 0, true);
     }
-    s.memory_error = 0;
+    caller.memory_error = 0;
 }
 bool bridge_import(State& s, const std::string& name) { return bridge_import_name(s, name); }
 bool bridge_import_name(State& s, std::string_view name) {

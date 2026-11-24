@@ -76,6 +76,10 @@
 //                     run every call of the match engine's advance (0x101d3f60) on a second execution
 //                     context and host thread over the same guest memory (guest_worker.hpp), the caller
 //                     waiting; with --state-digest the result must equal a run without it
+//   --worker-stack    as --advance-on-worker, on the worker's own guest stack: what the engine leaves below
+//                     the stack pointer stays there, so compare the digest outside the stacks
+//   --worker-heap     as --worker-stack, with the worker's scratch heap too: blocks have other addresses, so
+//                     the register comparison at imports is relaxed and the evidence is the replay's RNG check
 //   --state-digest    print a digest of the mapped guest memory and the registers when the run ends,
 //                     also when it ends early
 //   --stack-audit-all as --stack-audit, listing every site, offset and writer
@@ -227,7 +231,7 @@ int replay_main(int argc, char** argv) {
         std::optional<std::filesystem::path> write_expected;
         std::optional<std::uint32_t> flip;
         std::optional<std::filesystem::path> profile;
-        bool timing = false, match_sharing = false, advance_on_worker = false, state_digest = false, match_phases = false, stack_audit = false, stack_audit_all = false, club_control_check = false, club_control_shifted = false;
+        bool timing = false, match_sharing = false, advance_on_worker = false, worker_stack = false, worker_heap = false, state_digest = false, match_phases = false, stack_audit = false, stack_audit_all = false, club_control_check = false, club_control_shifted = false;
         std::optional<std::uint64_t> scramble;
         std::optional<RoutineChecker> checker;
         bool checker_corrupted = false;
@@ -246,6 +250,8 @@ int replay_main(int argc, char** argv) {
             else if (option == "--stack-audit") stack_audit = true;
             else if (option == "--match-sharing") match_sharing = true;
             else if (option == "--advance-on-worker") advance_on_worker = true;
+            else if (option == "--worker-stack") advance_on_worker = worker_stack = true;
+            else if (option == "--worker-heap") { advance_on_worker = worker_stack = worker_heap = true; season_replay_relax_import_inputs(); }
             else if (option == "--state-digest") state_digest = true;
             else if (option == "--stack-audit-all") stack_audit = stack_audit_all = true;
             else if (option == "--scramble-stack" && i + 1 < argc) { scramble = std::stoull(argv[++i], nullptr, 0); stack_audit = true; }
@@ -504,19 +510,24 @@ int replay_main(int argc, char** argv) {
                     try { print(); } catch (const std::exception& failure) { std::cerr << "state digest failed: " << failure.what() << '\n'; }
                 }
                 void print() const {
-                    std::uint64_t digest = UINT64_C(14695981039346656037), bytes = 0;
-                    const auto mix = [&](const std::uint8_t* data, std::size_t size) {
+                    // The second digest leaves the guest stacks out (the game's and the workers', 0x70000000 up):
+                    // what a call on a worker's own stack can be compared on.
+                    std::uint64_t digest = UINT64_C(14695981039346656037), bytes = 0, outside = digest;
+                    const auto mix = [&](const std::uint8_t* data, std::size_t size, bool stack) {
                         for (std::size_t n = 0; n < size; ++n) digest = (digest ^ data[n]) * UINT64_C(0x100000001b3);
+                        if (!stack) for (std::size_t n = 0; n < size; ++n) outside = (outside ^ data[n]) * UINT64_C(0x100000001b3);
                         bytes += size;
                     };
                     for (const auto& [start, size] : state->memory.mapped_ranges()) {
                         const auto copy = state->memory.copy_out(start, size);
-                        mix(copy.data(), copy.size());
+                        mix(copy.data(), copy.size(), start >= 0x70000000 && start < 0x80000000);
                     }
-                    mix(state->registers.data(), state->registers.size());
+                    mix(state->registers.data(), state->registers.size(), false);
                     std::cerr << "state digest: " << std::hex << digest << std::dec << " over " << bytes << " bytes; pc "
                               << hex_address(state->pc) << "; instructions " << state->executed << "; native calls "
-                              << state->native_calls << "; worker calls " << (worker ? worker->calls() : 0) << '\n';
+                              << state->native_calls << "; worker calls " << (worker ? worker->calls() : 0)
+                              << "; scratch heap in use " << (worker ? worker->scratch_in_use() : 0) << '\n';
+                    std::cerr << "state digest outside the stacks: " << std::hex << outside << std::dec << '\n';
                 }
             } digest_run;
             static GuestWorker* active_worker = nullptr;
@@ -524,7 +535,7 @@ int replay_main(int argc, char** argv) {
             struct WorkerProbe { bool on = false; ~WorkerProbe() { if (on) dispatch_probe = nullptr; } } worker_probe;
             if (advance_on_worker) {
                 if (dispatch_probe) throw std::runtime_error("--advance-on-worker runs alone");
-                worker.emplace(*state);
+                worker.emplace(*state, worker_stack ? std::optional<unsigned>(0) : std::nullopt, worker_heap);
                 active_worker = &*worker; worker_main = state.get();
                 dispatch_probe = [](State& s) {
                     if (&s != worker_main || s.pc != 0x101d3f60) return false;
