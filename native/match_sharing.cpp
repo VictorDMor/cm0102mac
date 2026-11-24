@@ -92,6 +92,29 @@ struct MatchSharing::Impl final : MemoryObserver, AllocatorBoundaryObserver {
     // What other owners read of what matches wrote (the matches' outputs), distinct words by reader class.
     std::map<std::uint32_t, std::uint64_t> outputs_read_by;
     std::vector<std::string> log;
+    // Blocks allocated while a match's advance runs: where each one is freed. A play phase on its own thread
+    // must hand the survivors over to the code that frees them.
+    struct Born { std::uint32_t owner, size; };
+    std::unordered_map<std::uint32_t, Born> born;
+    std::uint64_t born_total = 0, freed_same_advance = 0, freed_same_match = 0, freed_other_match = 0, freed_outside = 0,
+                  foreign_frees = 0, born_bytes = 0, surviving_bytes = 0;
+    std::map<std::uint32_t, std::uint64_t> survivor_sizes, survivor_freers;
+    bool in_advance() const { return !spans.empty() && spans.back().entry == advance; }
+    std::uint32_t pending_serial = 0;
+    void freed(std::uint32_t block) {
+        const auto found = born.find(block);
+        if (found == born.end()) { if (in_advance() && block >= heap_low) ++foreign_frees; return; }
+        const auto o = owner();
+        if (o == found->second.owner && in_advance() && advance_serial == found->second.size >> 24) ++freed_same_advance;
+        else {
+            if (o == found->second.owner) ++freed_same_match; else if (match_of(o)) ++freed_other_match; else ++freed_outside;
+            surviving_bytes += found->second.size & 0xffffff;
+            ++survivor_sizes[found->second.size & 0xffffff];
+            ++survivor_freers[s.pc];
+        }
+        born.erase(found);
+    }
+    std::uint32_t advance_serial = 0;   // low 8 bits tag the advance call a block was born in
     std::uint64_t unowned_draws = 0, draw_samples = 0;
     std::map<std::uint32_t, std::uint64_t> draw_callers;
     std::vector<std::uint8_t> stack_copy;
@@ -162,7 +185,7 @@ struct MatchSharing::Impl final : MemoryObserver, AllocatorBoundaryObserver {
             default: return;
         }
         ++entries[pc];
-        if (pc == advance) ++matches[o - first_match].advances;
+        if (pc == advance) { ++matches[o - first_match].advances; advance_serial = (advance_serial + 1) & 0xff; }
         if (events_logged++ < 400) {
             std::ostringstream line;
             line << Hex{pc} << " r3=" << Hex{std::uint32_t(s.r<4>(12))} << " r4=" << Hex{std::uint32_t(s.r<4>(16))} << " sp=" << Hex{at}
@@ -274,6 +297,7 @@ struct MatchSharing::Impl final : MemoryObserver, AllocatorBoundaryObserver {
             pending_size = entry == 0x10775130 ? state.r<4>(12) : entry == 0x107751b0 ? state.r<4>(16)
                          : entry == 0x10775200 ? state.r<4>(12) * state.r<4>(16) : 0;
             if (!pending_size && entry != 0x10775170) ++unsized_allocator_calls;
+            if (entry == 0x10775170 || entry == 0x107751b0) freed(std::uint32_t(state.r<4>(12)));
             ++allocator_by_owner_class[owner_class(owner())];
             if (auto* match = match_of(owner())) ++match->allocator_calls;
         }
@@ -283,6 +307,7 @@ struct MatchSharing::Impl final : MemoryObserver, AllocatorBoundaryObserver {
         const auto block = std::uint32_t(state.r<4>(12));
         if (block >= heap_low && block < heap_high && pending_size < 0x4000000) {
             ++sized_allocations;
+            if (in_advance()) { ++born_total; born_bytes += pending_size; born[block] = {owner(), std::uint32_t(std::min<std::uint64_t>(pending_size, 0xffffff)) | advance_serial << 24}; }
             for (auto word = (block - heap_low) / 4, last = std::uint32_t((block + pending_size - 1 - heap_low) / 4); word <= last && word < heap.words; ++word)
                 heap.birth[word] = last_finished_ever;
         }
@@ -311,6 +336,20 @@ void MatchSharing::report(std::ostream& out) const {
         for (const auto& [link, count] : i.draw_callers) rows.push_back({count, link});
         std::sort(rows.rbegin(), rows.rend());
         for (std::size_t n = 0; n < std::min<std::size_t>(rows.size(), 70); ++n) out << ' ' << Hex{rows[n].second} << '=' << rows[n].first;
+    }
+    out << "\nblocks allocated inside advance: " << i.born_total << " (" << i.born_bytes << " bytes); freed in the same advance call "
+        << i.freed_same_advance << ", later by the same match " << i.freed_same_match << ", by another match " << i.freed_other_match
+        << ", by code outside matches " << i.freed_outside << ", never freed in the run " << i.born.size() << "; bytes of those freed later "
+        << i.surviving_bytes << "; frees inside advance of blocks born elsewhere " << i.foreign_frees;
+    out << "\n  sizes of blocks freed later:";
+    { std::size_t n = 0; for (const auto& [size, count] : i.survivor_sizes) if (n++ < 24) out << ' ' << size << 'x' << count; }
+    out << "\n  PCs freeing them:";
+    { std::size_t n = 0; for (const auto& [pc, count] : i.survivor_freers) if (n++ < 24) out << ' ' << Hex{pc} << 'x' << count; }
+    {
+        std::map<std::uint32_t, std::uint64_t> sizes;
+        for (const auto& [block, b] : i.born) ++sizes[b.size & 0xffffff];
+        out << "\n  sizes of blocks never freed:";
+        std::size_t n = 0; for (const auto& [size, count] : sizes) if (n++ < 24) out << ' ' << size << 'x' << count;
     }
     out << "\nallocator calls by owner:";
     for (const auto& [o, count] : i.allocator_by_owner_class) out << ' ' << owner_name(o) << '=' << count;
