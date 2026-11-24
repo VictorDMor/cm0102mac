@@ -72,9 +72,9 @@ CommandContext original_command_context(const State& s, const CommandScreen& scr
             allow(DirectCommand::continue_game, 1000);
             allow(DirectCommand::save_game, 1022);
             allow(DirectCommand::open_game_options, 1059);
-            // Load is available on the start screen only. The Mac original
-            // Restart action ends at the empty 1076f880 routine; do not offer
-            // a command which accepts confirmation but cannot restart.
+            // Load is available on the start screen only. Restart stays the
+            // original's own control (its confirmed action reopens the
+            // application, restart_game.cpp); no direct command for it.
             allow(DirectCommand::back_or_cancel, -2);
             if (c.handler == 0x10036f10) {
                 const auto history = std::uint32_t(s.memory.read<4>(c.root + 0x10));

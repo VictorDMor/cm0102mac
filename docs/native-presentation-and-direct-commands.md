@@ -48,11 +48,12 @@ game frame/content dimensions. Save/Load was not retested for this change.
 | `set_interface_scale` | View > Interface Scale | Native presentation; child IDs `.100`, `.125`, `.150`, `.200`, `.fit` |
 
 Load deliberately remains unavailable inside a career. The Mac original Restart
-control (action 1071) opens a confirmation but its confirmed restart reaches
-`0x1076f880`, an empty original routine. This was reproduced with keyboard and
-original button input. The native menu explains: save and quit first, reopen,
-then Load. It neither silently discards a career nor pretends Restart succeeded.
-Rebuilding the original restart lifecycle is outside this presentation change.
+control (action 1071) opens a confirmation, but its confirmed restart only calls
+`0x1076f880`, an empty original routine, so the original's Restart does nothing.
+Since 2026-11-24 the host takes those two calls (`native/restart_game.cpp`, hooked
+through `tools/restart_game_audit.py`): the game closes through its own exit
+routine, as on Quit, and the application opens again at the start screen. As the
+confirmation says, an unsaved career is not kept.
 
 Command-S takes precedence over the original sound toggle and requests a save to
 the full path of the most recently completed career load or save. A failed save

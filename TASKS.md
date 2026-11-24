@@ -7,6 +7,8 @@ the scrollback. Remove ticked items once their commit is pushed.
 
 - [x] New Screens layout for the generic message box of FILE_SCREENS.CPP (every opener: quit, restart, notices) and for the line-up confirmation before the match (commit 3b7df280, by a subagent; Victor's answers of 2026-11-24). The line-up confirmation is its own screen in MATCH_SCREENS: render 0x1029ad50, handler 0x1029cd10, opener 0x1029ab60 ("Proceed to the match ?", No = action 2, Yes = action 3). Both have the shape of the existing message screens and map to `ScreenTemplate::message_screen` (the shared Yoga recipe); two faults of that shared layout with long messages were fixed (hidden padding rows, buttons pushed off the canvas). Check: `cm-adaptive-gui-checks --message-screens`, 52 scenarios, run on the reference week's snapshot. Open: the `adaptive_gui` ctests cannot run since `.local` was rebuilt (their snapshot `ui/tactics-views/initial.snapshot` is gone); the Yes answers and the look are Victor's to see in play; the line-up check uses a synthetic match record (the fewest lines the builder gives).
 
+- [x] Restart Game did nothing (Victor, 2026-11-24): the Mac original's confirmed restart calls an empty routine (0x1076f880, from the menu bar handler at 0x102a67b0 and 0x102a6a74). The host now takes those calls: the game closes through its exit routine and the application reopens at the start screen (native/restart_game.cpp). Checked in the driven game: Restart from the game's menu, Yes, the process ends normally and a new one starts. Not checked: the installed app (the same code path), a restart during a network game.
+
 ## Holiday mode (Victor, 2026-11-24)
 
 Asked while the parallel play phase was in progress; both wait for it to land.

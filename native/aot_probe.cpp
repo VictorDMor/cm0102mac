@@ -1,3 +1,4 @@
+#include "restart_game.hpp"
 #include "calendar_adapter.hpp"
 #include "date_subsystem_audit.hpp"
 #include "rng_core_adapter.hpp"
@@ -232,6 +233,7 @@ int cm::aot::run_probe(int argc, char** argv) {
         std::cout << match_engine_call_summary(*state);
         std::cout << "Original application requested a normal exit after " << state->executed
                   << " statically recompiled instructions\n";
+        cm::aot::reopen_after_restart();
         return 0;
     } catch (const std::exception& error) {
         report_failure(state.get(), error.what());

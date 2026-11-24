@@ -67,6 +67,7 @@ from compiler_arithmetic_audit import (require_compiler_arithmetic_contract, req
                                      require_compiler_arithmetic_hooks, compiler_arithmetic_hook, COMPILER_ARITHMETIC_ENTRIES)
 from native_drawing_audit import NATIVE_DRAWING_BOUNDARIES, require_native_drawing_contract
 from adaptive_gui_audit import ADAPTIVE_GUI_INSTRUCTIONS, ADAPTIVE_BACKGROUND_BOUNDARY
+from restart_game_audit import RESTART_CALLS
 from profiling_boundaries import PROFILE_BOUNDARIES, profiling_hook
 from register_context_audit import (require_register_context_contract, require_register_context_index,
                                    require_register_context_hooks, register_context_hook,
@@ -2124,6 +2125,8 @@ def generate_page(page, instructions, selected, local_temporaries=True, userops=
         code.insert(1, '#include "native_drawing.hpp"')
     if any(a >> 12 == page for a in (*ADAPTIVE_GUI_INSTRUCTIONS, ADAPTIVE_BACKGROUND_BOUNDARY)):
         code.insert(1, '#include "adaptive_gui.hpp"')
+    if any(a >> 12 == page for a in RESTART_CALLS):
+        code.insert(1, '#include "restart_game.hpp"')
     if staff_forwards:
         code.insert(1, '#include "staff_score_stack.hpp"')
         code.append("bool staff_stack_forwarding = can_forward_staff_score_stack(s);")
@@ -2206,6 +2209,11 @@ def generate_page(page, instructions, selected, local_temporaries=True, userops=
             if item["assembly"] != "lwz r0,0x138(r1)":
                 raise ValueError("Fixture successful-read boundary changed")
             code.append("{ guest::Cpu c(s); english_rules::loaded_premier_fixture(c, c.sp() + 0x12c); }")
+            isolated.add(a)
+        if a in RESTART_CALLS:
+            if item["assembly"] != RESTART_CALLS[a] or a + 4 not in page_addresses:
+                raise ValueError(f"Restart call changed at {a:x}")
+            code.append(f"if (restart_game(s, 0x{a:x})) goto i_{a + 4:x};")
             isolated.add(a)
         if a in ADAPTIVE_GUI_INSTRUCTIONS:
             if item["assembly"] != ADAPTIVE_GUI_INSTRUCTIONS[a] or a + 4 not in page_addresses:
