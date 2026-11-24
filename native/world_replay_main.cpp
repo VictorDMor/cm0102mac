@@ -69,6 +69,9 @@
 //   --stack-audit     list the original's reads of stack it left uninitialised
 //                     (values earlier calls left behind; see stack_audit.hpp);
 //                     owners take their observed paths, so the run is slower
+//   --match-sharing   list what each background match reads and writes outside
+//                     itself and what other matches wrote of it (match_sharing.hpp);
+//                     reported even when the replay stops early
 //   --stack-audit-all as --stack-audit, listing every site, offset and writer
 //                     (the per-reader leftover contract needs all of them)
 #include "list_search.hpp"
@@ -81,6 +84,7 @@
 #include "season_reference.hpp"
 #include "semantic_io_checks.hpp"
 #include "stack_audit.hpp"
+#include "match_sharing.hpp"
 #include "routine_check.hpp"
 #include "tactics_adapter.hpp"
 #include "main_program_adapter.hpp"
@@ -216,7 +220,7 @@ int replay_main(int argc, char** argv) {
         std::optional<std::filesystem::path> write_expected;
         std::optional<std::uint32_t> flip;
         std::optional<std::filesystem::path> profile;
-        bool timing = false, match_phases = false, stack_audit = false, stack_audit_all = false, club_control_check = false, club_control_shifted = false;
+        bool timing = false, match_sharing = false, match_phases = false, stack_audit = false, stack_audit_all = false, club_control_check = false, club_control_shifted = false;
         std::optional<std::uint64_t> scramble;
         std::optional<RoutineChecker> checker;
         bool checker_corrupted = false;
@@ -233,6 +237,7 @@ int replay_main(int argc, char** argv) {
             else if (option == "--timing") timing = true;
             else if (option == "--match-phases") match_phases = true;
             else if (option == "--stack-audit") stack_audit = true;
+            else if (option == "--match-sharing") match_sharing = true;
             else if (option == "--stack-audit-all") stack_audit = stack_audit_all = true;
             else if (option == "--scramble-stack" && i + 1 < argc) { scramble = std::stoull(argv[++i], nullptr, 0); stack_audit = true; }
             else if (option == "--check-club-control") club_control_check = true;
@@ -458,6 +463,26 @@ int replay_main(int argc, char** argv) {
             if (stack_audit) {
                 if (scramble) audit.emplace(*state, *scramble); else audit.emplace(*state);
                 state->memory.date_observer = audit->observer();
+            }
+            // Reports on the way out too: a capture's last screen may not replay.
+            struct SharingRun {
+                std::optional<MatchSharing> sharing;
+                State* state = nullptr;
+                ~SharingRun() {
+                    if (!sharing) return;
+                    dispatch_probe = nullptr;
+                    state->memory.date_observer = nullptr;
+                    sharing->report(std::cerr);
+                }
+            } sharing_run;
+            static MatchSharing* active_sharing = nullptr;
+            if (match_sharing) {
+                if (stack_audit || dispatch_probe) throw std::runtime_error("--match-sharing runs alone");
+                sharing_run.sharing.emplace(*state);
+                sharing_run.state = state.get();
+                active_sharing = &*sharing_run.sharing;
+                state->memory.date_observer = active_sharing->observer();
+                dispatch_probe = [](State& s) { active_sharing->probe(s); return false; };
             }
             const auto executed = state->executed, calls = state->native_calls;
             // A replay mismatch can throw before the ordinary stop below.

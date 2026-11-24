@@ -382,13 +382,13 @@ target_compile_options(cm-season-reference PRIVATE -Wall -Wextra -Werror -Wpedan
 add_executable(cm-shortlist-links-insert-checks shortlist_links_insert_checks.cpp)
 target_link_libraries(cm-shortlist-links-insert-checks PRIVATE cm_aot)
 target_compile_options(cm-shortlist-links-insert-checks PRIVATE -Wall -Wextra -Werror -Wpedantic)
-add_executable(cm-world-replay world_replay_main.cpp)
+add_executable(cm-world-replay world_replay_main.cpp match_sharing.cpp)
 target_link_libraries(cm-world-replay PRIVATE cm_aot)
 target_compile_options(cm-world-replay PRIVATE -Wall -Wextra -Werror -Wpedantic)
 # Keep inactive phase scopes out of the playable app and timing reference.
 # The four routine owners and recorder replace their archive members only in this
 # diagnostic executable, retaining normal guest routing and arithmetic flags.
-add_executable(cm-world-replay-phases world_replay_main.cpp match_eng_advance_loop.cpp
+add_executable(cm-world-replay-phases world_replay_main.cpp match_sharing.cpp match_eng_advance_loop.cpp
     match_eng_shots_tendencies.cpp match_pl_context_action.cpp match_pl_secondary.cpp
     match_phase_timing.cpp)
 target_link_libraries(cm-world-replay-phases PRIVATE cm_aot)

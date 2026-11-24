@@ -3,6 +3,27 @@
 The live work list. Claude keeps it current during a run; read this instead of
 the scrollback. Remove ticked items once their commit is pushed.
 
+## Matches on several threads: what they share (Victor, 2026-11-24)
+
+Victor asked to measure before deciding on the parallel mode (it changes RNG order, so it stays his decision; a mode switch, sequential by default, is the proposal).
+
+- [x] `cm-world-replay <capture> --match-sharing` (native/match_sharing.cpp): per match, reads and writes outside its stack and object, RNG draws, allocator calls, and the words another match (or the day driver after one) wrote. First run, reference career (one country), seven days from 11 January 2002, 404 matches (49 from the day driver 0x101cb9d0, 355 quick ones built by construct/set_up, the simulated-statistics path):
+  - RNG: matches make 17.8M of the week's 18.9M draws; a full match 580-680K, a quick one about 20K. One cursor, so each match starts where the previous stopped.
+  - Game data a match reads that another match wrote directly: 2,999 distinct words in the week, 18 (writer PC, reader PC) pairs (0x10738b60-0x10738e0c, 0x10186cd0-0x10186dc8, 0x103af2b4 -> 0x1020e470/0x1020dd74, 0x103b19a4).
+  - Memory a match overwrites without reading what another left: 4.27M words (temporary blocks reused: per-thread scratch, no dependence).
+  - Allocator: 25,643 calls inside matches (1,150-1,460 per full match, 13 per quick one); 5,459 words of heap bookkeeping flow from match to match.
+  - What the day driver wrote after one match and the next read: 69,107 words. The measurement cannot tell the next match's own set-up from results of the previous one; that needs the writes traced back to their inputs.
+- [ ] Split the 69,107 driver words: set-up of the next match from club/player records, against values derived from the previous match (table, form, condition, suspensions).
+- [ ] Name the 18 direct pairs (routine and record) and say which are real carried state.
+- [ ] Same run on a career with many countries when one exists again (the 26-country career went with `.local`).
+- Limits: the capture's last screen does not replay (SetRect r23 after the week is simulated; classic screens via `Screens.plist` NewScreens=false in the run directory, adaptive ones stop at the first SetRect), so the report is printed on the way out; spans rely on the dispatcher's probe seeing 0x101d3f60 (449 entries, none left open); the statistics caller 0x10370e10 runs in place and shows as "other-code".
+
+## `.local` rebuilt from scratch (2026-11-24)
+
+Victor deleted `.local` whole. Rebuilt: Ghidra project from the original executable (SHA-1 a767c5b8), export (1,953,365 instructions), oracle, generation (1,922 pages, 0 missing), build of the app and `cm-world-replay` (6 minutes). `generated` and `build` are real directories under `.local/current`. Gone for good: every capture, the benchmark saves, timing baselines, the PGO profile (the build is plain until `tools/dev.sh pgo` runs on new captures: its training list names captures that no longer exist). New: `.local/benchmarks/world/ref-week` (session capture, reference career, seven days) and `saves/` copy.
+
+- [ ] New captures for PGO training and for the replay-based checks (day, week, save-info, database, two match intervals), or point `tools/dev.sh pgo` at what exists.
+
 ## Background fixtures in the seven-day Continue
 
 - [x] Profiled side tendencies on the January 11–18 replay. Of 73,840 calls, 1,118 sampled calls spent 97.6% inside the roster loop. Timed floating-point/rating publication and reload around external calls extrapolate to roughly 9 ms per week after subtracting the measured clock overhead. This estimate excludes other register/stack operations interleaved with the calculations.
