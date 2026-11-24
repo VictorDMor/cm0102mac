@@ -16,6 +16,10 @@ the scrollback. Remove ticked items once their commit is pushed.
 
 - [x] Verified streaming Zstandard level 1 and legacy snapshots, corruption detection and interrupted writes. The seven-day replay reached the same final state with both formats. Its snapshots shrank from 122,346,140 to 20,811,529 bytes. Across 11 runs per format, median load time for both snapshots was 62 ms raw and 103 ms compressed.
 
+## Disk cleanup (Victor's request, 2026-11-23): 20 GB -> 53 GB free
+
+Deleted with his go-ahead: the 29 stale captures of `.local/benchmarks/ui` (only `save-info` still replayed; the `ui_replay_*` and other tests over the deleted captures now lack their input and need new recordings), every `.local/performance` run except `bases`, `editor` and `club-interest-continue-base` (the source of `world/same-save-continue`), old work areas (`tendency-week-intermediates`, `season-databases`, `zstd-replay`, `tracy-analysis`, `background-week-nov18`, `match-phase-work`, `staff-profile`, `force-purchase-fix`), delivered modules' bulky evidence under `.local/rewrites`, and 13 checker binaries of the build (`tools/dev.sh build <target>` recreates one). `.local/rewrites/perf-frames` and the PGO baselines are gone too: timing baselines must be saved again before the next comparison.
+
 ## Now: speed is architecture, not remaining PowerPC (measured 2026-11-23)
 
 - [x] `modern_stdlib_core_production` and `original_stdlib_core_profile` failed at the abs leaf 0x10775540 and at the division fault of 0x10775560 (2026-11-23). Both were stale expectations of native/stdlib_core_integration_checks.cpp, not production defects: abs/labs are leaves (INLINE_OWNER_MODULES), so `run_until` runs them through `run_leaf` without their hook (the owner's counters miss those calls by design, 075a855f of 2026-10-21); the check now enters the page's hook as the dispatcher does (`dispatch_page`) for leaf entries. A zero divisor stops the original inside the run charged at the divw (block accounting, dcf330fb), seven instructions ahead of the C++; the check pins that difference.
