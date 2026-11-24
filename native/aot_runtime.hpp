@@ -193,6 +193,9 @@ public:
     // ExactBounds region around it. One memory per process can use hardware.
     void use_hardware_bounds();
     void leave_hardware_bounds();
+    // Makes this memory a second view of `main`'s bytes (guest_worker.hpp): the same reservation and bounds
+    // tables; observers are the caller's to set. `main` must outlive it and maps for both; call again after `main` maps more.
+    void share(const Memory& main);
     bool exact_bounds() const { return exact_bounds_ != 0; }
     class [[nodiscard]] ExactBounds {
     public:
@@ -246,14 +249,14 @@ private:
     std::uint8_t* data_;
     // Nonzero: exact checks (1 by default, plus open ExactBounds regions).
     mutable std::uint32_t exact_bounds_ = 1;
-    bool hardware_ = false;
+    bool hardware_ = false, shared_ = false;
     struct Range { std::uint64_t start, end; };
     std::vector<Range> ranges_;
-    std::unique_ptr<std::array<std::uint64_t, 65536>> page_ends_ =
-        std::make_unique<std::array<std::uint64_t, 65536>>();
+    std::shared_ptr<std::array<std::uint64_t, 65536>> page_ends_ =
+        std::make_shared<std::array<std::uint64_t, 65536>>();
     // Per block, the latest mapping that starts inside it (one per block; an
     // earlier one there keeps the slow path). Valid because mappings only grow.
-    std::unique_ptr<std::array<Range, 65536>> partial_starts_ = std::make_unique<std::array<Range, 65536>>();
+    std::shared_ptr<std::array<Range, 65536>> partial_starts_ = std::make_shared<std::array<Range, 65536>>();
 };
 
 // Runs once, on the faulting thread, when a memory in hardware mode takes a

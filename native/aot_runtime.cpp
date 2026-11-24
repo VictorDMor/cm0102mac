@@ -108,7 +108,18 @@ Memory::Memory() {
 }
 Memory::~Memory() {
     leave_hardware_bounds();
-    munmap(data_, reservation_size);
+    if (!shared_) munmap(data_, reservation_size);
+}
+void Memory::share(const Memory& main) {
+    if (hardware_ || &main == this) throw std::logic_error("A shared guest memory view needs another, plain memory");
+    if (!shared_) munmap(data_, reservation_size);
+    shared_ = true;
+    data_ = main.data_;
+    ranges_ = main.ranges_;
+    page_ends_ = main.page_ends_;
+    partial_starts_ = main.partial_starts_;
+    // Hardware bounds belong to the reservation, so they hold for this view too.
+    exact_bounds_ = main.hardware_ ? 0 : 1;
 }
 void Memory::use_hardware_bounds() {
 #if !defined(__arm64__)

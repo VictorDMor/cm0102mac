@@ -181,7 +181,7 @@ if(CM_SHORTLIST_COVERAGE)
     set_source_files_properties(routine_check.cpp PROPERTIES COMPILE_DEFINITIONS CM_SHORTLIST_COVERAGE=1)
     target_link_options(cm_aot INTERFACE "-fprofile-instr-generate=${CM_SHORTLIST_PROFILE}")
 endif()
-target_sources(cm_aot PRIVATE club_control.cpp stack_audit.cpp match_sharing.cpp shortlist_recruitment_notify.cpp shortlist_recruitment_register.cpp
+target_sources(cm_aot PRIVATE club_control.cpp stack_audit.cpp match_sharing.cpp guest_worker.cpp shortlist_recruitment_notify.cpp shortlist_recruitment_register.cpp
     shortlist_recruitment_requested.cpp shortlist_recruitment_adapter.cpp)
 target_sources(cm_aot PRIVATE shortlist_assessment.cpp shortlist_assessment_contribution.cpp
     shortlist_assessment_interest_context.cpp shortlist_assessment_interest_preferences.cpp

@@ -72,6 +72,12 @@
 //   --match-sharing   list what each background match reads and writes outside
 //                     itself and what other matches wrote of it (match_sharing.hpp);
 //                     reported even when the replay stops early
+//   --advance-on-worker
+//                     run every call of the match engine's advance (0x101d3f60) on a second execution
+//                     context and host thread over the same guest memory (guest_worker.hpp), the caller
+//                     waiting; with --state-digest the result must equal a run without it
+//   --state-digest    print a digest of the mapped guest memory and the registers when the run ends,
+//                     also when it ends early
 //   --stack-audit-all as --stack-audit, listing every site, offset and writer
 //                     (the per-reader leftover contract needs all of them)
 #include "list_search.hpp"
@@ -85,6 +91,7 @@
 #include "semantic_io_checks.hpp"
 #include "stack_audit.hpp"
 #include "match_sharing.hpp"
+#include "guest_worker.hpp"
 #include "routine_check.hpp"
 #include "tactics_adapter.hpp"
 #include "main_program_adapter.hpp"
@@ -220,7 +227,7 @@ int replay_main(int argc, char** argv) {
         std::optional<std::filesystem::path> write_expected;
         std::optional<std::uint32_t> flip;
         std::optional<std::filesystem::path> profile;
-        bool timing = false, match_sharing = false, match_phases = false, stack_audit = false, stack_audit_all = false, club_control_check = false, club_control_shifted = false;
+        bool timing = false, match_sharing = false, advance_on_worker = false, state_digest = false, match_phases = false, stack_audit = false, stack_audit_all = false, club_control_check = false, club_control_shifted = false;
         std::optional<std::uint64_t> scramble;
         std::optional<RoutineChecker> checker;
         bool checker_corrupted = false;
@@ -238,6 +245,8 @@ int replay_main(int argc, char** argv) {
             else if (option == "--match-phases") match_phases = true;
             else if (option == "--stack-audit") stack_audit = true;
             else if (option == "--match-sharing") match_sharing = true;
+            else if (option == "--advance-on-worker") advance_on_worker = true;
+            else if (option == "--state-digest") state_digest = true;
             else if (option == "--stack-audit-all") stack_audit = stack_audit_all = true;
             else if (option == "--scramble-stack" && i + 1 < argc) { scramble = std::stoull(argv[++i], nullptr, 0); stack_audit = true; }
             else if (option == "--check-club-control") club_control_check = true;
@@ -486,6 +495,45 @@ int replay_main(int argc, char** argv) {
                 state->memory.date_observer = active_sharing->observer();
                 dispatch_probe = [](State& s) { active_sharing->probe(s); return false; };
             }
+            std::optional<GuestWorker> worker;   // before the digest, which reads its count on the way out
+            struct DigestRun {
+                State* state = nullptr;
+                GuestWorker* worker = nullptr;
+                ~DigestRun() {
+                    if (!state) return;
+                    try { print(); } catch (const std::exception& failure) { std::cerr << "state digest failed: " << failure.what() << '\n'; }
+                }
+                void print() const {
+                    std::uint64_t digest = UINT64_C(14695981039346656037), bytes = 0;
+                    const auto mix = [&](const std::uint8_t* data, std::size_t size) {
+                        for (std::size_t n = 0; n < size; ++n) digest = (digest ^ data[n]) * UINT64_C(0x100000001b3);
+                        bytes += size;
+                    };
+                    for (const auto& [start, size] : state->memory.mapped_ranges()) {
+                        const auto copy = state->memory.copy_out(start, size);
+                        mix(copy.data(), copy.size());
+                    }
+                    mix(state->registers.data(), state->registers.size());
+                    std::cerr << "state digest: " << std::hex << digest << std::dec << " over " << bytes << " bytes; pc "
+                              << hex_address(state->pc) << "; instructions " << state->executed << "; native calls "
+                              << state->native_calls << "; worker calls " << (worker ? worker->calls() : 0) << '\n';
+                }
+            } digest_run;
+            static GuestWorker* active_worker = nullptr;
+            static State* worker_main = nullptr;
+            struct WorkerProbe { bool on = false; ~WorkerProbe() { if (on) dispatch_probe = nullptr; } } worker_probe;
+            if (advance_on_worker) {
+                if (dispatch_probe) throw std::runtime_error("--advance-on-worker runs alone");
+                worker.emplace(*state);
+                active_worker = &*worker; worker_main = state.get();
+                dispatch_probe = [](State& s) {
+                    if (&s != worker_main || s.pc != 0x101d3f60) return false;
+                    active_worker->call(std::uint32_t(s.r<4>(4128)));
+                    return true;
+                };
+                worker_probe.on = true;
+            }
+            if (state_digest) { digest_run.state = state.get(); digest_run.worker = worker ? &*worker : nullptr; }
             const auto executed = state->executed, calls = state->native_calls;
             // A replay mismatch can throw before the ordinary stop below.
             // Stop sampling before unwinding destroys the sampled State.
