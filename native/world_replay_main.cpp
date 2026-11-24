@@ -458,6 +458,8 @@ int replay_main(int argc, char** argv) {
                 else if (timing) open_timing_replay(capture); else open_operation_replay(capture);
                 seed_season_replay(*state);
                 if (session) begin_session_replay(*state);
+                // The diagnostic needs the run, not the proof: registers no import reads may differ after drawing code.
+                if (match_sharing) season_replay_relax_import_inputs();
             }
             std::optional<StackAudit> audit;
             if (stack_audit) {

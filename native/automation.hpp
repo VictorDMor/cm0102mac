@@ -17,7 +17,7 @@ struct State;
 // status.json. Requests name original commands, controls and keys; none
 // carries a screen position, and none changes what the game simulates.
 struct AutomationRequest {
-    enum class Kind { command, control, key, text, snapshot, memory, profile, capture, drag, menu, wheel, quit, dialog, activate, print } kind{};
+    enum class Kind { command, control, key, text, snapshot, memory, profile, capture, sharing, drag, menu, wheel, quit, dialog, activate, print } kind{};
     // Inputs reach the game and wait for an idle screen; the other requests
     // only observe, at any event boundary.
     bool input() const {
@@ -38,6 +38,7 @@ struct AutomationRequest {
     // with their modifiers. Snapshot/memory requests: output name and range.
     // Profile requests: empty name to start sampling, an output name to stop.
     // Capture requests: an output name to start a session capture, empty to stop.
+    // Sharing requests (match_sharing.hpp): empty name to start observing, an output name to stop and report.
     std::vector<std::pair<std::uint32_t, std::uint16_t>> keys;
     // Menu requests: the menu choice (menu id << 16 | item), as AppKit
     // selects it from the menu bar. Wheel requests: the wheel delta in lines.

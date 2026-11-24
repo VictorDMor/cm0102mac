@@ -23,6 +23,15 @@ constexpr std::uint32_t day_driver = 0x101cb9d0, scheduled = 0x101cd5c0, watched
 constexpr std::uint32_t match_object_size = 0xdfc;
 // The match RNG's words are reached through four TOC slots (seed, table begin, table end, cursor); the C runtime's state is fixed.
 constexpr std::uint32_t rng_slots = 0x108b3f00, crt_rng = 0x108b85cc;
+// Return addresses of the calls of those routines (the instruction after each `bl`), sorted.
+constexpr std::array<std::pair<std::uint32_t, std::uint32_t>, 34> call_sites{{
+    {0x10119170, day_driver}, {0x101196b8, day_driver}, {0x10119940, statistics}, {0x10131df8, watched},
+    {0x101cb838, destroy}, {0x101cbfac, advance}, {0x101cc008, destroy}, {0x101cc1a8, scheduled}, {0x101cc1e4, construct},
+    {0x101cc268, set_up}, {0x101cc284, advance}, {0x101cc368, destroy}, {0x101cc620, scheduled}, {0x101ccb28, construct},
+    {0x101ccba4, set_up}, {0x101ccbc0, advance}, {0x101cccac, destroy}, {0x101ccdd8, scheduled}, {0x101ccf1c, advance},
+    {0x101cd1ec, scheduled}, {0x101cd4d8, construct}, {0x101cd55c, set_up}, {0x101cd6fc, advance}, {0x101cd748, advance},
+    {0x101cd838, destroy}, {0x101cebc0, construct}, {0x101cec38, set_up}, {0x101cec4c, advance}, {0x101ced58, destroy},
+    {0x1028df54, watched}, {0x10371bfc, construct}, {0x10371c74, set_up}, {0x10371c88, advance}, {0x10371d10, destroy}}};
 // Owners of an access. Matches start at first_match.
 enum : std::uint32_t { nobody = 0, other = 1, driver = 2, statistics_caller = 3, scheduled_caller = 4, watched_caller = 5, first_match = 8 };
 // A write by other code made after a match finished on the same day carries that match.
@@ -83,6 +92,10 @@ struct MatchSharing::Impl final : MemoryObserver, AllocatorBoundaryObserver {
     // What other owners read of what matches wrote (the matches' outputs), distinct words by reader class.
     std::map<std::uint32_t, std::uint64_t> outputs_read_by;
     std::vector<std::string> log;
+    std::uint64_t unowned_draws = 0, draw_samples = 0;
+    std::map<std::uint32_t, std::uint64_t> draw_callers;
+    std::vector<std::uint8_t> stack_copy;
+    const std::uint8_t* stack_bytes(std::uint32_t address) { stack_copy = s.memory.copy_out(address, 4); return stack_copy.data(); }
 
     std::array<std::uint32_t, 4> rng_words{};
     std::uint32_t rng_cursor = 0, date_word = 0, today = 0;
@@ -127,9 +140,11 @@ struct MatchSharing::Impl final : MemoryObserver, AllocatorBoundaryObserver {
             if (span->owner < first_match) { matches.back().caller = span->owner; break; }
         return current[object] = first_match + std::uint32_t(matches.size() - 1);
     }
-    void probe() {
-        track();
-        const auto pc = s.pc;
+    void probe() { track(); open(s.pc, sp()); }
+    // A call of a match routine: seen by the dispatcher's probe, or (the app calls C++ owners in place, past the
+    // probe) by the callee's prologue saving one of the known return addresses in its caller's frame.
+    void open(std::uint32_t pc, std::uint32_t at) {
+        if (!spans.empty() && spans.back().entry == pc && spans.back().sp == at) return;
         std::uint32_t o;
         switch (pc) {
             case day_driver: o = driver; ++driver_calls; break;
@@ -150,11 +165,11 @@ struct MatchSharing::Impl final : MemoryObserver, AllocatorBoundaryObserver {
         if (pc == advance) ++matches[o - first_match].advances;
         if (events_logged++ < 400) {
             std::ostringstream line;
-            line << Hex{pc} << " r3=" << Hex{std::uint32_t(s.r<4>(12))} << " r4=" << Hex{std::uint32_t(s.r<4>(16))} << " sp=" << Hex{sp()}
+            line << Hex{pc} << " r3=" << Hex{std::uint32_t(s.r<4>(12))} << " r4=" << Hex{std::uint32_t(s.r<4>(16))} << " sp=" << Hex{at}
                  << " depth=" << spans.size() << " owner=" << (o >= first_match ? "match " + std::to_string(o - first_match) : owner_name(o));
             log.push_back(line.str());
         }
-        spans.push_back({pc, o, sp(), false, s.executed});
+        spans.push_back({pc, o, at, false, s.executed});
     }
 
     Shadow* shadow(std::uint32_t address) {
@@ -191,6 +206,17 @@ struct MatchSharing::Impl final : MemoryObserver, AllocatorBoundaryObserver {
         }
         if (write && start <= rng_cursor && start + size > rng_cursor) {
             ++draws_by_owner_class[owner_class(o)];
+            // Where the draws outside any span come from: one in 1,024, every return address on the guest stack.
+            if (!match && !(++unowned_draws & 1023)) {
+                ++draw_samples;
+                std::uint32_t frame = sp();
+                for (unsigned depth = 0; depth < 96 && frame >= stack_low && frame + 12 <= stack_high; ++depth) {
+                    const auto next = std::uint32_t(read_be<4>(stack_bytes(frame))), link = std::uint32_t(read_be<4>(stack_bytes(frame + 8)));
+                    if (link >= 0x10000000 && link < 0x108b3a84) ++draw_callers[link];
+                    if (next <= frame) break;
+                    frame = next;
+                }
+            }
             if (match) ++match->draws;
         }
         if (write && start <= crt_rng && start + size > crt_rng && match) ++match->crt_draws;
@@ -228,6 +254,12 @@ struct MatchSharing::Impl final : MemoryObserver, AllocatorBoundaryObserver {
     void cleared(std::uint32_t start, std::uint64_t size) override { access(start, size, true); }
     void written(std::uint32_t start, const std::uint8_t* bytes, std::size_t size) override {
         // A new game date ends the day: matches of different days stay in order anyway.
+        if (size == 4 && start >= stack_low && start < stack_high) {
+            const auto value = std::uint32_t(read_be<4>(bytes));
+            if (value >= 0x10119170 && value <= 0x10371d10)
+                if (const auto found = std::lower_bound(call_sites.begin(), call_sites.end(), std::pair<std::uint32_t, std::uint32_t>{value, 0});
+                    found != call_sites.end() && found->first == value && start - 8 == sp()) { track(); open(found->second, start - 8); }
+        }
         if (start == date_word && size >= 2) {
             const auto day = std::uint32_t(bytes[0]) << 8 | bytes[1];
             if (day != today) { today = day; ++days; last_finished = 0; }
@@ -273,6 +305,13 @@ void MatchSharing::report(std::ostream& out) const {
     for (std::size_t n = 0; n < std::min<std::size_t>(i.log.size(), 60); ++n) out << "  " << i.log[n] << '\n';
     out << "RNG draws (cursor writes) by owner:";
     for (const auto& [o, count] : i.draws_by_owner_class) out << ' ' << owner_name(o) << '=' << count;
+    out << "\nreturn addresses under draws outside any match span (" << i.draw_samples << " samples):";
+    {
+        std::vector<std::pair<std::uint64_t, std::uint32_t>> rows;
+        for (const auto& [link, count] : i.draw_callers) rows.push_back({count, link});
+        std::sort(rows.rbegin(), rows.rend());
+        for (std::size_t n = 0; n < std::min<std::size_t>(rows.size(), 70); ++n) out << ' ' << Hex{rows[n].second} << '=' << rows[n].first;
+    }
     out << "\nallocator calls by owner:";
     for (const auto& [o, count] : i.allocator_by_owner_class) out << ' ' << owner_name(o) << '=' << count;
     out << "\nwords matches wrote that others then read, by reader:";
@@ -298,6 +337,17 @@ void MatchSharing::report(std::ostream& out) const {
             << " allocator=" << m.allocator_calls << " words-from-other-match=" << m.reads_from_match
             << " words-from-code-after-match=" << m.reads_from_later_driver << " overwrites-of-other-match=" << m.overwrites_of_match << '\n';
     };
+    // Full matches (minute by minute) against quick ones, by caller: a quick one draws about 20,000 numbers.
+    for (const auto& [o, count] : by_caller) {
+        std::uint64_t full = 0, full_draws = 0, quick_draws = 0, slices = 0, full_allocator = 0;
+        for (const auto& m : i.matches)
+            if (m.caller == o) {
+                if (m.draws >= 100000) { ++full; full_draws += m.draws; slices += m.advances; full_allocator += m.allocator_calls; }
+                else quick_draws += m.draws;
+            }
+        out << "\n  " << owner_name(o) << ": full=" << full << " (draws " << full_draws << ", advance calls " << slices << ", allocator calls "
+            << full_allocator << ") quick=" << count - full << " (draws " << quick_draws << ")";
+    }
     out << "\n";
     row("TOTAL", total);
     for (std::size_t n = 0; n < i.matches.size(); ++n)

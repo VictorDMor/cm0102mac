@@ -1,3 +1,5 @@
+#include "match_sharing.hpp"
+#include "routine_check.hpp"
 #include "platform.hpp"
 #include "adaptive_gui.hpp"
 #include "gui_guest_scope.hpp"
@@ -205,6 +207,28 @@ struct NativePlatform::Impl {
                     std::filesystem::create_directories(path.parent_path());
                     result = std::to_string(guest_profiler::write(path)) + " samples in " + path.string();
                     guest_profiler::release();
+                }
+            } else if (request.kind == Kind::sharing) {
+                // What background matches share (match_sharing.hpp): observes from here to the stop request.
+                static std::unique_ptr<MatchSharing> sharing;
+                static MatchSharing* active = nullptr;
+                if (request.name.empty()) {
+                    if (sharing || s.memory.date_observer || dispatch_probe) throw std::runtime_error("an observer is already installed");
+                    sharing = std::make_unique<MatchSharing>(s);
+                    active = sharing.get();
+                    s.memory.date_observer = sharing->observer();
+                    dispatch_probe = [](State& state) { active->probe(state); return false; };
+                    result = "observing";
+                } else if (!sharing) throw std::runtime_error("not observing");
+                else {
+                    dispatch_probe = nullptr;
+                    s.memory.date_observer = nullptr;
+                    const auto path = automation->output("sharing", request.name + ".txt");
+                    std::filesystem::create_directories(path.parent_path());
+                    std::ofstream out(path);
+                    sharing->report(out);
+                    sharing.reset();
+                    result = path.string();
                 }
             } else if (request.kind == Kind::capture) {
                 // Recorded from the end of this event call; replay with cm-world-replay.
