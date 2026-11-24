@@ -8,6 +8,7 @@
 #include <algorithm>
 #include <atomic>
 #include <charconv>
+#include <cstdio>
 #include <cstdlib>
 #include <exception>
 #include <memory>
@@ -306,6 +307,15 @@ struct Driver {
         call(0x10743120, 0x101cc5f0, {screen, text, 0xffffffff, 0, 0xffffffff});
         listed = true; c.set(20, 1);
     }
+    // CM_MATCH_LOG=FILE: one line per background match the driver finishes, for comparing the orders' results
+    // (TASKS.md, step 6): game day, competition, the two clubs, goals, penalties (-1: none).
+    void log_result(std::uint32_t fixture) {
+        static std::FILE* const file = [] { const char* path = std::getenv("CM_MATCH_LOG"); return path && *path ? std::fopen(path, "a") : nullptr; }();
+        if (!file) return;
+        std::fprintf(file, "%u %d %08x %08x %d %d %d %d\n", unsigned(c.u16(c.u32(GuestScratch::game_toc - 0x7b80))), c.i32(fixture + 4),
+                     c.u32(fixture + 0x20), c.u32(fixture + 0x24), c.i8(fixture + 0x47), c.i8(fixture + 0x48), c.i8(fixture + 0x4b), c.i8(fixture + 0x4c));
+        std::fflush(file);
+    }
     // After the last minute: the result record, the post-match routine, the match object released.
     void finish(std::uint32_t fixture, std::uint32_t first_byte) {
         const auto result = call(0x10773520, 0x101cc2c8, {0xdfc});
@@ -314,6 +324,7 @@ struct Driver {
         c.put32(fixture + 0x60, result);
         if (!c.u32(fixture + 0x60)) { out_of_memory(0x101cc2fc, 0xa8, 0x60, 0x3a6); return; }
         call(0x1029e9e0, 0x101cc358, {c.u32(post_match), c.u32(fixture + 0x58), c.u32(fixture + 0x60)});
+        log_result(fixture);
         call(0x101d3e50, 0x101cc364, {c.u32(fixture + 0x58), 1});
         c.put32(fixture + 0x58, 0);
         call(0x10430550, 0x101cc378, {c.u32(calendar), fixture + 4});
