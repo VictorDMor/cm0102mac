@@ -1,3 +1,4 @@
+#include "parallel_matches.hpp"
 #include "settings_toggle.hpp"
 #include "debug_localization.hpp"
 #include "gui_guest_scope.hpp"
@@ -17,11 +18,11 @@ std::uint32_t selected_control(const State& s) {
 }
 }
 unsigned host_settings_rows() {
-    return unsigned(native_debugging_available()) + unsigned(new_screens_available());
+    return unsigned(native_debugging_available()) + unsigned(new_screens_available()) + unsigned(parallel_matches_available());
 }
 unsigned settings_event(const State& s) {
     // Without a host row the original dispatcher reads the control itself.
-    if (!new_screens_available()) return 0;
+    if (!new_screens_available() && !parallel_matches_available()) return 0;
     const auto control = selected_control(s);
     auto action = control ? std::int16_t(s.memory.read<4>(control + 8)) : std::int16_t(0);
     if (!action) action = std::int16_t(s.memory.read<2>(s.memory.read<4>(s.r<4>(8) - 0x7bb0) + 0x25819e));

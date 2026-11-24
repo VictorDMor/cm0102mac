@@ -1,3 +1,4 @@
+#include "parallel_matches.hpp"
 #include "match_sharing.hpp"
 #include "routine_check.hpp"
 #include "platform.hpp"
@@ -690,6 +691,7 @@ struct NativePlatform::Impl {
     NativeUI& user_interface() {
         if (!ui) {
             ui = std::make_unique<NativeUI>(writable.parent_path() / "Presentation.plist");
+            initialize_parallel_matches(writable.parent_path() / "ParallelMatches.txt");
         }
         return *ui;
     }

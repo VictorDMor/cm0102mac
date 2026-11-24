@@ -1,3 +1,4 @@
+#include "parallel_matches.hpp"
 #include "preferences_screen.hpp"
 #include "preferences_screen_detail.hpp"
 #include "match_debugging.hpp"
@@ -130,6 +131,7 @@ void build_screen(State& s,SemanticDependencyDispatch* d,SemanticGuestObserver* 
     detail::build_print_choices(a);
     append_debugging_option(s);
     append_new_screens_option(s);
+    append_parallel_matches_option(s);
     detail::return_to_caller(a);
 }
 }

@@ -1,3 +1,4 @@
+#include "parallel_matches.hpp"
 #include "preferences_actions.hpp"
 #include "semantic_guest_call.hpp"
 #include "match_debugging.hpp"
@@ -101,6 +102,7 @@ void dispatch_action(State& s, SemanticDependencyDispatch* d, SemanticGuestObser
     if (dispatch_debugging_option(s)) return;
     const auto screen_action = settings_event(s);
     if (dispatch_new_screens_option(s, screen_action)) return;
+    if (dispatch_parallel_matches_option(s, screen_action)) return;
     Call a(s,dispatch_action_entry,d,o);
     a.link();a.multiple(26);a.load(30,2,-0x7bb0);a.move(26,3);a.value(4,0);a.move(3,30);
     a.store(1,8,0);a.frame(0x50);a.call(0x1073ef70);a.move(0,3);a.move(3,30);a.move(27,0);
@@ -121,5 +123,6 @@ void dispatch_action(State& s, SemanticDependencyDispatch* d, SemanticGuestObser
     a.at(0x1033f8c8);a.sign16(0,0);a.compare(0,0x27);select_action(a);
     a.at(0x1033fc4c);a.load(0,1,0x58);a.offset(1,1,0x50);a.restore_link();a.multiple(26,true);a.finish();
     finish_new_screens_options(screen_action, std::int32_t(s.r<4>(12)));
+    finish_parallel_matches_options(screen_action, std::int32_t(s.r<4>(12)));
 }
 }
