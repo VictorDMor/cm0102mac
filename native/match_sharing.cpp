@@ -25,7 +25,7 @@ constexpr std::uint32_t match_object_size = 0xdfc;
 constexpr std::uint32_t rng_slots = 0x108b3f00, crt_rng = 0x108b85cc;
 // Owners of an access. Matches start at first_match.
 enum : std::uint32_t { nobody = 0, other = 1, driver = 2, statistics_caller = 3, scheduled_caller = 4, watched_caller = 5, first_match = 8 };
-// A driver write made after a match finished in the same driver call carries that match.
+// A write by other code made after a match finished on the same day carries that match.
 constexpr std::uint32_t after_match = 0x40000000;
 const char* owner_name(std::uint32_t owner) {
     switch (owner) {
@@ -33,7 +33,7 @@ const char* owner_name(std::uint32_t owner) {
         case statistics_caller: return "statistics-caller"; case scheduled_caller: return "scheduled-caller";
         case watched_caller: return "watched-caller";
     }
-    return owner & after_match ? "driver-after-match" : "match";
+    return owner & after_match ? "code-after-match" : "match";
 }
 struct Hex { std::uint32_t value; };
 std::ostream& operator<<(std::ostream& out, Hex h);
@@ -50,11 +50,11 @@ struct MatchSharing::Impl final : MemoryObserver, AllocatorBoundaryObserver {
     State& s;
     struct Shadow {
         std::uint32_t low, words;
-        std::uint32_t *writer, *writer_pc, *reader;   // per 4-byte word; calloc keeps untouched pages unmapped
+        std::uint32_t *writer, *writer_pc, *reader, *birth;   // per 4-byte word; calloc keeps untouched pages unmapped
         Shadow(std::uint32_t l, std::uint32_t h) : low(l), words((h - l + 3) / 4),
             writer(static_cast<std::uint32_t*>(std::calloc(words, 4))), writer_pc(static_cast<std::uint32_t*>(std::calloc(words, 4))),
-            reader(static_cast<std::uint32_t*>(std::calloc(words, 4))) {}
-        ~Shadow() { std::free(writer); std::free(writer_pc); std::free(reader); }
+            reader(static_cast<std::uint32_t*>(std::calloc(words, 4))), birth(static_cast<std::uint32_t*>(std::calloc(words, 4))) {}
+        ~Shadow() { std::free(writer); std::free(writer_pc); std::free(reader); std::free(birth); }
     };
     Shadow data{data_low, data_high}, heap{heap_low, heap_high};
     struct Span { std::uint32_t entry, owner, sp; bool below; std::uint64_t executed; };
@@ -71,22 +71,26 @@ struct MatchSharing::Impl final : MemoryObserver, AllocatorBoundaryObserver {
     };
     std::vector<Match> matches;
     std::unordered_map<std::uint32_t, std::uint32_t> current;     // match object -> owner
-    std::uint32_t last_finished = 0;                              // in the current driver call
+    std::uint32_t last_finished = 0;                              // on the current day
+    std::uint32_t last_finished_ever = first_match - 1;          // for the birth of allocated blocks
+    std::uint64_t pending_size = 0, sized_allocations = 0, unsized_allocator_calls = 0, days = 0;
     unsigned allocator_depth = 0;
     std::uint64_t driver_calls = 0, events_logged = 0;
     std::map<std::uint32_t, std::uint64_t> entries, draws_by_owner_class, allocator_by_owner_class;
     // Flows between owners: (class of flow, writer PC, reader PC) -> uses.
     struct Flow { std::uint64_t accesses = 0, words = 0; std::uint32_t sample = 0; std::map<std::uint32_t, std::uint64_t> allocations; };
-    std::map<std::tuple<int, bool, std::uint32_t, std::uint32_t>, Flow> flows;
+    std::map<std::tuple<int, bool, std::uint32_t, std::uint32_t>, Flow> flows;   // class: kind + 10 (through other code) + 100 (block born after the writer's match)
     // What other owners read of what matches wrote (the matches' outputs), distinct words by reader class.
     std::map<std::uint32_t, std::uint64_t> outputs_read_by;
     std::vector<std::string> log;
 
     std::array<std::uint32_t, 4> rng_words{};
-    std::uint32_t rng_cursor = 0;
+    std::uint32_t rng_cursor = 0, date_word = 0, today = 0;
     explicit Impl(State& state) : s(state) {
         for (unsigned n = 0; n < 4; ++n) rng_words[n] = std::uint32_t(state.memory.read<4>(rng_slots + n * 4)) & ~3u;
         rng_cursor = rng_words[3];
+        date_word = std::uint32_t(state.memory.read<4>(0x108b3f10));
+        today = std::uint32_t(state.memory.read<2>(date_word));
     }
     std::uint32_t sp() const { return std::uint32_t(s.r<4>(4)); }
     std::uint32_t owner() const { return spans.empty() ? other : spans.back().owner; }
@@ -107,10 +111,9 @@ struct MatchSharing::Impl final : MemoryObserver, AllocatorBoundaryObserver {
     void close(const Span& span) {
         if (auto* match = match_of(span.owner)) {
             match->instructions += s.executed - span.executed;
-            if (span.entry == advance) { match->advanced = true; last_finished = span.owner; }
+            if (span.entry == advance) { match->advanced = true; last_finished = last_finished_ever = span.owner; }
             if (span.entry == destroy) match->finished = true;
         }
-        if (span.entry == day_driver) last_finished = 0;
     }
     std::uint32_t match_for(std::uint32_t object, bool fresh_allowed) {
         const auto found = current.find(object);
@@ -164,7 +167,8 @@ struct MatchSharing::Impl final : MemoryObserver, AllocatorBoundaryObserver {
         if (std::find(rng_words.begin(), rng_words.end(), address & ~3u) != rng_words.end() || (address & ~3u) == crt_rng) return 0;
         return allocator_depth ? 1 : 2;
     }
-    void note(int flow, bool overwrite, std::uint32_t writer_pc, std::uint32_t address, bool distinct) {
+    void note(int flow, bool overwrite, std::uint32_t writer_pc, std::uint32_t address, bool distinct, std::uint32_t from) {
+        if (address >= heap_low && heap.birth[(address - heap_low) / 4] >= from) flow += 100;
         auto& entry = flows[{flow, overwrite, writer_pc, s.pc}];
         ++entry.accesses;
         if (!distinct) return;
@@ -195,7 +199,7 @@ struct MatchSharing::Impl final : MemoryObserver, AllocatorBoundaryObserver {
         auto* map = shadow(start);
         if (!map) return;
         // The driver's writes after a match carry that match, so a later match's read of them shows.
-        const auto as_writer = o == driver && last_finished ? after_match | last_finished : o;
+        const auto as_writer = !match && last_finished ? after_match | last_finished : o;
         for (auto word = (start - map->low) / 4, last = std::uint32_t((start + std::max<std::uint64_t>(size, 1) - 1 - map->low) / 4);
              word <= last && word < map->words; ++word) {
             const auto address = map->low + word * 4, previous = map->writer[word];
@@ -203,7 +207,7 @@ struct MatchSharing::Impl final : MemoryObserver, AllocatorBoundaryObserver {
             if (write) {
                 if (match && !own && previous != o) {
                     ++match->new_words_written;
-                    if (match_of(previous) && !seen) { ++match->overwrites_of_match; note(kind(address), true, map->writer_pc[word], address, true); }
+                    if (match_of(previous) && !seen) { ++match->overwrites_of_match; note(kind(address), true, map->writer_pc[word], address, true, previous); }
                 }
                 map->writer[word] = as_writer;
                 map->writer_pc[word] = s.pc;
@@ -213,7 +217,7 @@ struct MatchSharing::Impl final : MemoryObserver, AllocatorBoundaryObserver {
             const auto from = previous & after_match ? (previous & ~after_match) : previous;
             if (match && previous != o && (match_of(previous) || (previous & after_match)) && from != o) {
                 if (!seen) ++(previous & after_match ? match->reads_from_later_driver : match->reads_from_match);
-                note(kind(address) + (previous & after_match ? 10 : 0), false, map->writer_pc[word], address, !seen);
+                note(kind(address) + (previous & after_match ? 10 : 0), false, map->writer_pc[word], address, !seen, from);
             } else if (!match && match_of(previous) && !seen) {
                 ++outputs_read_by[owner_class(o)];
             }
@@ -222,16 +226,36 @@ struct MatchSharing::Impl final : MemoryObserver, AllocatorBoundaryObserver {
     }
     void mapped(std::uint32_t, std::uint64_t) override {}
     void cleared(std::uint32_t start, std::uint64_t size) override { access(start, size, true); }
-    void written(std::uint32_t start, const std::uint8_t*, std::size_t size) override { access(start, size, true); }
+    void written(std::uint32_t start, const std::uint8_t* bytes, std::size_t size) override {
+        // A new game date ends the day: matches of different days stay in order anyway.
+        if (start == date_word && size >= 2) {
+            const auto day = std::uint32_t(bytes[0]) << 8 | bytes[1];
+            if (day != today) { today = day; ++days; last_finished = 0; }
+        }
+        access(start, size, true);
+    }
     void read(std::uint32_t start, const std::uint8_t*, unsigned size) override { access(start, size, false); }
-    void enter(const State&, std::uint32_t, bool) override {
+    void enter(const State& state, std::uint32_t entry, bool) override {
         if (!allocator_depth++) {
             track();
+            // The C facades give the size; blocks taken straight from a pool or arena routine are not dated.
+            pending_size = entry == 0x10775130 ? state.r<4>(12) : entry == 0x107751b0 ? state.r<4>(16)
+                         : entry == 0x10775200 ? state.r<4>(12) * state.r<4>(16) : 0;
+            if (!pending_size && entry != 0x10775170) ++unsized_allocator_calls;
             ++allocator_by_owner_class[owner_class(owner())];
             if (auto* match = match_of(owner())) ++match->allocator_calls;
         }
     }
-    void leave(State&, std::uint32_t, bool) override { if (allocator_depth) --allocator_depth; }
+    void leave(State& state, std::uint32_t, bool) override {
+        if (!allocator_depth || --allocator_depth || !pending_size) return;
+        const auto block = std::uint32_t(state.r<4>(12));
+        if (block >= heap_low && block < heap_high && pending_size < 0x4000000) {
+            ++sized_allocations;
+            for (auto word = (block - heap_low) / 4, last = std::uint32_t((block + pending_size - 1 - heap_low) / 4); word <= last && word < heap.words; ++word)
+                heap.birth[word] = last_finished_ever;
+        }
+        pending_size = 0;
+    }
 };
 
 MatchSharing::MatchSharing(State& state) : impl(std::make_unique<Impl>(state)) { state.allocator_observer = impl.get(); }
@@ -243,6 +267,7 @@ void MatchSharing::report(std::ostream& out) const {
     const auto& i = *impl;
     out << "== match sharing ==\nentries seen by the probe:";
     for (const auto& [pc, count] : i.entries) out << ' ' << Hex{pc} << '=' << count;
+    out << "\ndays: " << i.days << "; dated allocations: " << i.sized_allocations << "; allocator calls without a size: " << i.unsized_allocator_calls;
     out << "\nmatches: " << i.matches.size() << "; open spans at the end: " << i.spans.size() << '\n';
     out << "first events:\n";
     for (std::size_t n = 0; n < std::min<std::size_t>(i.log.size(), 60); ++n) out << "  " << i.log[n] << '\n';
@@ -271,7 +296,7 @@ void MatchSharing::report(std::ostream& out) const {
             << " object r/w=" << m.own_reads << '/' << m.own_writes << " outside r/w=" << m.reads << '/' << m.writes
             << " outside-words-written=" << m.new_words_written << " draws=" << m.draws << " crt-draws=" << m.crt_draws
             << " allocator=" << m.allocator_calls << " words-from-other-match=" << m.reads_from_match
-            << " words-from-driver-after-match=" << m.reads_from_later_driver << " overwrites-of-other-match=" << m.overwrites_of_match << '\n';
+            << " words-from-code-after-match=" << m.reads_from_later_driver << " overwrites-of-other-match=" << m.overwrites_of_match << '\n';
     };
     out << "\n";
     row("TOTAL", total);
@@ -282,7 +307,7 @@ void MatchSharing::report(std::ostream& out) const {
             row(name.c_str(), i.matches[n]);
         }
     static const char* const kinds[] = {"RNG words", "allocator", "game data"};
-    for (const int flow : {2, 12, 1, 11, 0, 10})
+    for (const int flow : {2, 102, 12, 112, 1, 101, 11, 111, 0, 10})
         for (const bool overwrite : {false, true}) {
             std::vector<std::pair<std::tuple<int, bool, std::uint32_t, std::uint32_t>, const Impl::Flow*>> rows;
             std::uint64_t words = 0, accesses = 0;
@@ -291,9 +316,10 @@ void MatchSharing::report(std::ostream& out) const {
             if (rows.empty()) continue;
             std::sort(rows.begin(), rows.end(), [](const auto& a, const auto& b) { return a.second->words > b.second->words; });
             out << "\n-- " << kinds[flow % 10] << ": a match " << (overwrite ? "overwrites unread" : "reads") << " what "
-                << (flow >= 10 ? "the driver wrote after another match" : "another match wrote") << ": " << words << " distinct words, "
+                << (flow % 100 >= 10 ? "other code wrote after another match" : "another match wrote")
+                << (flow >= 100 ? ", in a block allocated after that match" : flow % 10 ? "" : "") << ": " << words << " distinct words, "
                 << accesses << " accesses, " << rows.size() << " (writer PC, reader PC) pairs --\n";
-            for (std::size_t n = 0; n < std::min<std::size_t>(rows.size(), 45); ++n) {
+            for (std::size_t n = 0; n < std::min<std::size_t>(rows.size(), flow == 12 || flow == 2 ? 400 : 12); ++n) {
                 const auto& [key, value] = rows[n];
                 out << "  writer " << Hex{std::get<2>(key)} << " -> " << (overwrite ? "writer " : "reader ") << Hex{std::get<3>(key)} << ": words="
                     << value->words << " accesses=" << value->accesses << " sample=" << Hex{value->sample} << " allocation sizes:";
