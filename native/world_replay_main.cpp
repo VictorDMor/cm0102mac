@@ -76,6 +76,8 @@
 //                     run every call of the match engine's advance (0x101d3f60) on a second execution
 //                     context and host thread over the same guest memory (guest_worker.hpp), the caller
 //                     waiting; with --state-digest the result must equal a run without it
+//   --club-sharing    what the daily shortlist calls of two clubs share (club_sharing.hpp); the report is
+//                     printed on the way out, and the register comparison at imports is relaxed
 //   --worker-stack    as --advance-on-worker, on the worker's own guest stack: what the engine leaves below
 //                     the stack pointer stays there, so compare the digest outside the stacks
 //   --worker-heap     as --worker-stack, with the worker's scratch heap too: blocks have other addresses, so
@@ -96,6 +98,7 @@
 #include "stack_audit.hpp"
 #include "match_sharing.hpp"
 #include "guest_worker.hpp"
+#include "club_sharing.hpp"
 #include "routine_check.hpp"
 #include "tactics_adapter.hpp"
 #include "main_program_adapter.hpp"
@@ -231,7 +234,7 @@ int replay_main(int argc, char** argv) {
         std::optional<std::filesystem::path> write_expected;
         std::optional<std::uint32_t> flip;
         std::optional<std::filesystem::path> profile;
-        bool timing = false, match_sharing = false, advance_on_worker = false, worker_stack = false, worker_heap = false, state_digest = false, match_phases = false, stack_audit = false, stack_audit_all = false, club_control_check = false, club_control_shifted = false;
+        bool timing = false, match_sharing = false, club_sharing = false, advance_on_worker = false, worker_stack = false, worker_heap = false, state_digest = false, match_phases = false, stack_audit = false, stack_audit_all = false, club_control_check = false, club_control_shifted = false;
         std::optional<std::uint64_t> scramble;
         std::optional<RoutineChecker> checker;
         bool checker_corrupted = false;
@@ -249,6 +252,7 @@ int replay_main(int argc, char** argv) {
             else if (option == "--match-phases") match_phases = true;
             else if (option == "--stack-audit") stack_audit = true;
             else if (option == "--match-sharing") match_sharing = true;
+            else if (option == "--club-sharing") { club_sharing = true; season_replay_relax_import_inputs(); }
             else if (option == "--advance-on-worker") advance_on_worker = true;
             else if (option == "--worker-stack") advance_on_worker = worker_stack = true;
             else if (option == "--worker-heap") { advance_on_worker = worker_stack = worker_heap = true; season_replay_relax_import_inputs(); }
@@ -511,6 +515,26 @@ int replay_main(int argc, char** argv) {
                 active_sharing = &*sharing_run.sharing;
                 state->memory.date_observer = active_sharing->observer();
                 dispatch_probe = [](State& s) { active_sharing->probe(s); return false; };
+            }
+            // --club-sharing: the same for the clubs' daily shortlist calls (club_sharing.hpp).
+            struct ClubRun {
+                std::optional<ClubSharing> sharing;
+                State* state = nullptr;
+                ~ClubRun() {
+                    if (!sharing) return;
+                    dispatch_probe = nullptr;
+                    if (state) state->memory.date_observer = nullptr;
+                    try { sharing->report(std::cout); } catch (const std::exception& failure) { std::cerr << "club sharing report failed: " << failure.what() << '\n'; }
+                }
+            } club_run;
+            static ClubSharing* active_club_sharing = nullptr;
+            if (club_sharing) {
+                if (stack_audit || dispatch_probe) throw std::runtime_error("--club-sharing runs alone");
+                club_run.sharing.emplace(*state);
+                club_run.state = state.get();
+                active_club_sharing = &*club_run.sharing;
+                state->memory.date_observer = active_club_sharing->observer();
+                dispatch_probe = [](State& s) { active_club_sharing->probe(s); return false; };
             }
             std::optional<GuestWorker> worker;   // before the digest, which reads its count on the way out
             struct DigestRun {
