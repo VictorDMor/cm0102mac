@@ -1,3 +1,5 @@
+#include <cstdlib>
+#include <cstdio>
 #include "shortlist_manager_candidates_scan.hpp"
 
 // The candidate scan (0x1035e9f0): for one of a club's shortlist rows, walk
@@ -428,6 +430,18 @@ void Scan::conclude_empty() {
     scan_candidates(c, manager, row_address, club_address, excluded);
 }
 
+// CM_SHORTLIST_LOG=FILE: one line per scan that walked its lists, for comparing the judging on workers with
+// the original order (TASKS.md): game day, the club's id, the row's kind, whether it asks for a player, the id
+// of the person chosen (-1: none) and the best score.
+void Scan::log_scan() {
+    static std::FILE* const file = [] { const char* path = std::getenv("CM_SHORTLIST_LOG"); return path && *path ? std::fopen(path, "a") : nullptr; }();
+    if (!file) return;
+    const auto chosen = c.u32(at(local::chosen));
+    std::fprintf(file, "%u %d %d %d %d %d\n", unsigned(c.u16(c.u32(0x108b3f10))), int(club.id()), int(row.kind()), int(std::int8_t(player_row)),
+                 chosen ? c.i32(chosen) : -1, best.value());
+    std::fflush(file);
+}
+
 void Scan::run() {
     struct Told {
         State& s;
@@ -446,6 +460,7 @@ void Scan::run() {
     best = c.u32(at(local::minimum));
     set_categories();
     walk();
+    log_scan();
     const auto chosen = c.u32(at(local::chosen));
     if (nonzero_logical(c, chosen)) {
         take(chosen);

@@ -235,6 +235,7 @@ struct Scan {
     bool set_minimum();
     void set_categories();
     void walk();
+    void log_scan();
     // Experimental, CM_SHORTLIST_PARALLEL=1 (TASKS.md, "The shortlist manager's 37%"): the entries' eligibility is
     // judged on guest workers before the walk, and consider() takes each verdict in list order instead of
     // judging. What an eligible entry's judging left for the valuation comes back with the verdict.
