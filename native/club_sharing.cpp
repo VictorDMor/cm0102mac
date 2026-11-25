@@ -46,12 +46,22 @@ struct ClubSharing::Impl final : MemoryObserver, AllocatorBoundaryObserver {
     unsigned allocator_depth = 0;
     std::uint64_t pending_size = 0;
     std::uint32_t pending_link = 0;
-    struct Live { std::uint32_t size, owner, link; };
+    struct Live { std::uint32_t size, owner, link; std::uint64_t judge; };
     std::map<std::uint32_t, Live> live;
     struct Conflict { std::uint64_t accesses = 0; std::uint32_t sample = 0; std::unordered_set<std::uint32_t> words; std::string block; };
     std::map<std::tuple<int, std::uint32_t, std::uint32_t>, Conflict> conflicts;
     // Inside the candidate scan: what judging one list entry writes outside the stack, by the code that writes.
     bool judging = false;
+    std::uint64_t judge_serial = 0, judge_blocks_total = 0, judge_survivors = 0, judge_foreign_frees = 0;
+    std::vector<std::uint32_t> judge_blocks;
+    std::map<std::uint32_t, std::uint64_t> survivor_sizes, survivor_links;
+    // The block a word lies in was allocated by the judging that is running: its own, not shared.
+    bool own_block(std::uint32_t address) {
+        auto after = live.upper_bound(address);
+        if (after == live.begin()) return false;
+        const auto& [start, block] = *std::prev(after);
+        return address - start < block.size && block.judge == judge_serial;
+    }
     std::uint64_t scans = 0, judged = 0, most_judged = 0, judged_in_scan = 0, judge_draws = 0, judge_allocations = 0, scan_draws = 0;
     bool scanning = false;
     struct Written { std::uint64_t accesses = 0; std::unordered_set<std::uint32_t> words; std::uint32_t sample = 0; std::string block; };
@@ -59,8 +69,13 @@ struct ClubSharing::Impl final : MemoryObserver, AllocatorBoundaryObserver {
     void candidate(int phase) {
         if (phase == 0) { scanning = true; ++scans; judged_in_scan = 0; }
         else if (phase == 3) { scanning = false; most_judged = std::max(most_judged, judged_in_scan); }
-        else if (phase == 1) { judging = true; ++judged; ++judged_in_scan; }
-        else judging = false;
+        else if (phase == 1) { judging = true; ++judged; ++judged_in_scan; ++judge_serial; }
+        else {
+            judging = false;
+            // Blocks this judging allocated and did not release: they outlive it.
+            for (const auto block : judge_blocks) if (live.count(block)) { ++judge_survivors; ++survivor_sizes[live[block].size]; ++survivor_links[live[block].link]; }
+            judge_blocks.clear();
+        }
     }
     std::array<std::uint32_t, 4> rng_words{};
     std::uint32_t rng_cursor = 0, date_word = 0, today = 0;
@@ -124,7 +139,7 @@ struct ClubSharing::Impl final : MemoryObserver, AllocatorBoundaryObserver {
         }
         if (judging && write && !(start >= stack_low && start < stack_high) && !rng(start)) {
             if (allocator_depth) ++judge_allocations;
-            else {
+            else if (!own_block(start)) {
                 auto& entry = judge_writes[s.pc];
                 ++entry.accesses;
                 if (!entry.sample) { entry.sample = start; entry.block = block_of(start); }
@@ -176,7 +191,13 @@ struct ClubSharing::Impl final : MemoryObserver, AllocatorBoundaryObserver {
             track();
             pending_size = entry == 0x10775130 ? state.r<4>(12) : entry == 0x107751b0 ? state.r<4>(16)
                          : entry == 0x10775200 ? state.r<4>(12) * state.r<4>(16) : 0;
-            if (entry == 0x10775170 || entry == 0x107751b0) live.erase(std::uint32_t(state.r<4>(12)));
+            if (entry == 0x10775170 || entry == 0x107751b0) {
+                const auto found = live.find(std::uint32_t(state.r<4>(12)));
+                if (found != live.end()) {
+                    if (judging && found->second.judge != judge_serial) ++judge_foreign_frees;
+                    live.erase(found);
+                }
+            }
             pending_link = std::uint32_t(state.r<4>(4128));
             if (current()) ++allocator_calls;
         }
@@ -185,7 +206,8 @@ struct ClubSharing::Impl final : MemoryObserver, AllocatorBoundaryObserver {
         if (!allocator_depth || --allocator_depth || !pending_size) return;
         const auto block = std::uint32_t(state.r<4>(12));
         if (block >= heap_low && block < heap_high && pending_size < 0x4000000) {
-            live[block] = {std::uint32_t(pending_size), current(), pending_link};
+            live[block] = {std::uint32_t(pending_size), current(), pending_link, judging ? judge_serial : 0};
+            if (judging) { ++judge_blocks_total; judge_blocks.push_back(block); }
             for (auto word = (block - heap_low) / 4, last = std::uint32_t((block + pending_size - 1 - heap_low) / 4); word <= last && word < heap.words; ++word)
                 heap.block_owner[word] = current();
         }
@@ -208,7 +230,12 @@ void ClubSharing::report(std::ostream& out) const {
         << "accesses of the clubs' calls outside stack, own blocks, RNG and allocator: " << i.accesses << '\n';
     out << "candidate scans: " << i.scans << ", entries judged: " << i.judged << " (most in one scan: " << i.most_judged
         << "); RNG draws while judging: " << i.judge_draws << ", in the scans outside judging: " << i.scan_draws
-        << "; allocator writes while judging: " << i.judge_allocations << '\n';
+        << "; allocator writes while judging: " << i.judge_allocations << '\n'
+        << "blocks allocated while judging: " << i.judge_blocks_total << ", still allocated when that judging ends: " << i.judge_survivors
+        << "; blocks from elsewhere released while judging: " << i.judge_foreign_frees << '\n';
+    for (const auto& [size, count] : i.survivor_sizes) out << "  surviving block of " << size << " bytes x" << count << '\n';
+    for (const auto& [link, count] : i.survivor_links) out << "  surviving block allocated at " << hex_text(link) << " x" << count << '\n';
+    out << "";
     {
         std::vector<std::pair<std::uint32_t, const Impl::Written*>> rows;
         std::uint64_t accesses = 0;
