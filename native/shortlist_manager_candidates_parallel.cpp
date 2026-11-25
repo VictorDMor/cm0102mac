@@ -34,6 +34,10 @@ constexpr std::uint32_t frame_size = 0x1b0;
 constexpr std::uint32_t locals_from = 0x38, locals_to = 0x140;
 constexpr std::array<unsigned, 9> kept{13, 14, 18, 19, 20, 21, 22, 23, 25};
 bool said = false;
+// The staff score on the workers too (Verdict::score); CM_SHORTLIST_STAFF_AHEAD=0 leaves it in the walk (for
+// timing comparisons).
+const bool score_ahead = [] { const char* value = std::getenv("CM_SHORTLIST_STAFF_AHEAD"); return !(value && value[0] == '0' && !value[1]); }();
+const std::uint32_t score_control = [] { const char* value = std::getenv("CM_SHORTLIST_SCORE_CHECK"); return value && value[0] == '2' ? 1u : 0u; }();
 }
 
 void Scan::capture(Verdict& verdict) const {
@@ -54,6 +58,19 @@ void Scan::restore(const Verdict& verdict) {
     c.s.memory.copy_in(at(0xdc), std::vector<std::uint8_t>(verdict.locals.begin() + (0xdc - 0x38), verdict.locals.end()));
     // The scratch word judging publishes the candidate's contract in (the worker wrote its own copy).
     c.put32(c.toc(slot::current_contract), verdict.current_contract);
+}
+
+void Scan::check_staff_score(std::uint32_t ahead) {
+    static const bool on = [] { const char* value = std::getenv("CM_SHORTLIST_SCORE_CHECK"); return value && (value[0] == '1' || value[0] == '2'); }();
+    if (!on) return;
+    static std::uint64_t checked = 0, differ = 0;
+    const auto in_place = staff_score();
+    ++checked;
+    if (in_place != ahead && ++differ <= 20)
+        std::fprintf(stderr, "Staff score differs: person 0x%08x club 0x%08x in place %d, from the worker %d\n", unsigned(person),
+                     unsigned(club_address), int(in_place), int(ahead));
+    if ((checked & (checked - 1)) == 0 || (checked % 50000) == 0)
+        std::fprintf(stderr, "Staff scores checked: %llu, differing: %llu\n", (unsigned long long)checked, (unsigned long long)differ);
 }
 
 bool Scan::judge_on_workers() {
@@ -100,6 +117,10 @@ bool Scan::judge_on_workers() {
                 if (!scan.eligible(judged_entries[n])) continue;
                 verdicts[n].eligible = true;
                 scan.capture(verdicts[n]);
+                if (score_ahead && !nonzero(w, std::int8_t(scan.player_row))) {
+                    verdicts[n].score = scan.staff_score(score_control);
+                    verdicts[n].scored = true;
+                }
             }
         }
         own.leave();

@@ -80,6 +80,7 @@ void Scan::consider(std::uint32_t entry_address) {
         const auto& verdict = verdicts[next_verdict++];
         if (!verdict.eligible) return;
         restore(verdict);
+        staff_score_ahead = verdict.scored ? std::optional{verdict.score} : std::nullopt;
         value();
         return;
     }

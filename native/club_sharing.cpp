@@ -6,6 +6,7 @@
 #include <cstdlib>
 #include <iomanip>
 #include <map>
+#include <unordered_map>
 #include <ostream>
 #include <sstream>
 #include <string>
@@ -67,8 +68,19 @@ struct ClubSharing::Impl final : MemoryObserver, AllocatorBoundaryObserver {
     bool scanning = false;
     struct Written { std::uint64_t accesses = 0; std::unordered_set<std::uint32_t> words; std::uint32_t sample = 0; std::string block; };
     std::map<std::uint32_t, Written> judge_writes, value_writes;   // while eligibility is judged; during the valuation
+    // The staff score (0x101ad080) inside the valuation, phases 5 and 6: whether it could run ahead of the walk.
+    // What it writes outside the stack, its draws and allocations, and what it reads that the scan wrote outside
+    // a staff score since the scan began (by the reading PC and the PC that wrote it).
+    bool scoring = false;
+    std::uint64_t scores = 0, score_draws = 0, score_allocations = 0, score_reads = 0;
+    std::map<std::uint32_t, Written> score_writes;
+    std::unordered_map<std::uint32_t, std::uint32_t> scan_written;   // word -> last writer PC in this scan, outside scoring
+    std::map<std::pair<std::uint32_t, std::uint32_t>, Written> score_stale;   // (writer, reader) -> words
     void candidate(int phase) {
-        if (phase == 0) { scanning = true; ++scans; judged_in_scan = 0; }
+        if (phase == 5) { scoring = true; ++scores; return; }
+        if (phase == 6) { scoring = false; return; }
+        scoring = false;
+        if (phase == 0) { scanning = true; ++scans; judged_in_scan = 0; scan_written.clear(); }
         else if (phase == 3) { scanning = false; most_judged = std::max(most_judged, judged_in_scan); }
         else if (phase == 1) { judging = true; valuing = false; ++judged; ++judged_in_scan; ++judge_serial; }
         else if (phase == 4) { valuing = true; ++valued; }
@@ -138,6 +150,32 @@ struct ClubSharing::Impl final : MemoryObserver, AllocatorBoundaryObserver {
         if (write && start <= rng_cursor && start + size > rng_cursor) {
             ++(club ? draws_inside : draws_outside);
             if (judging) { ++judge_draws; if (!valuing) ++eligibility_draws; } else if (scanning) ++scan_draws;
+        }
+        if (scoring) {
+            if (write && start <= rng_cursor && start + size > rng_cursor) ++score_draws;
+            if (!(start >= stack_low && start < stack_high) && !rng(start)) {
+                if (write) {
+                    if (allocator_depth) ++score_allocations;
+                    else {
+                        auto& entry = score_writes[s.pc];
+                        ++entry.accesses;
+                        if (!entry.sample) { entry.sample = start; entry.block = block_of(start); }
+                        if (entry.words.size() < 100000) entry.words.insert(start & ~3u);
+                    }
+                } else {
+                    ++score_reads;
+                    for (auto word = start & ~3u; word < start + std::max<std::uint64_t>(size, 1); word += 4) {
+                        const auto found = scan_written.find(word);
+                        if (found == scan_written.end()) continue;
+                        auto& entry = score_stale[{found->second, s.pc}];
+                        ++entry.accesses;
+                        if (!entry.sample) { entry.sample = word; entry.block = block_of(word); }
+                        if (entry.words.size() < 100000) entry.words.insert(word);
+                    }
+                }
+            }
+        } else if (scanning && write && !allocator_depth && !(start >= stack_low && start < stack_high) && !rng(start)) {
+            for (auto word = start & ~3u; word < start + std::max<std::uint64_t>(size, 1); word += 4) scan_written[word] = s.pc;
         }
         if (judging && write && !(start >= stack_low && start < stack_high) && !rng(start)) {
             if (allocator_depth) ++judge_allocations;
@@ -249,6 +287,25 @@ void ClubSharing::report(std::ostream& out) const {
         for (std::size_t n = 0; n < std::min<std::size_t>(rows.size(), 400); ++n)
             out << "  writer " << hex_text(rows[n].first) << " -> writer " << hex_text(rows[n].first) << ": words=" << rows[n].second->words.size()
                 << " accesses=" << rows[n].second->accesses << " sample=" << hex_text(rows[n].second->sample) << " in " << rows[n].second->block << ", this match 0\n";
+    }
+    out << "\n-- staff scores (0x101ad080): " << i.scores << " calls, " << i.score_draws << " RNG draws, " << i.score_allocations
+        << " allocator writes, " << i.score_reads << " reads outside the stack --\n";
+    {
+        std::vector<std::pair<std::uint32_t, const Impl::Written*>> rows;
+        for (const auto& [pc, value] : i.score_writes) rows.push_back({pc, &value});
+        std::sort(rows.begin(), rows.end(), [](const auto& a, const auto& b) { return a.second->accesses > b.second->accesses; });
+        out << "staff score writes outside the stack: " << rows.size() << " PCs\n";
+        for (std::size_t n = 0; n < std::min<std::size_t>(rows.size(), 200); ++n)
+            out << "  writer " << hex_text(rows[n].first) << ": words=" << rows[n].second->words.size() << " accesses=" << rows[n].second->accesses
+                << " sample=" << hex_text(rows[n].second->sample) << " in " << rows[n].second->block << '\n';
+        std::vector<std::pair<std::pair<std::uint32_t, std::uint32_t>, const Impl::Written*>> stale;
+        for (const auto& [key, value] : i.score_stale) stale.push_back({key, &value});
+        std::sort(stale.begin(), stale.end(), [](const auto& a, const auto& b) { return a.second->accesses > b.second->accesses; });
+        out << "staff score reads of words the scan wrote earlier outside a staff score: " << stale.size() << " (writer, reader) pairs\n";
+        for (std::size_t n = 0; n < std::min<std::size_t>(stale.size(), 200); ++n)
+            out << "  writer " << hex_text(stale[n].first.first) << " -> reader " << hex_text(stale[n].first.second) << ": words="
+                << stale[n].second->words.size() << " accesses=" << stale[n].second->accesses << " sample=" << hex_text(stale[n].second->sample)
+                << " in " << stale[n].second->block << '\n';
     }
     static const char* const names[] = {"club conflicts, a club reads what another club of the day wrote",
         "club conflicts, two clubs of the day write", "club conflicts, a club writes what another club of the day read"};

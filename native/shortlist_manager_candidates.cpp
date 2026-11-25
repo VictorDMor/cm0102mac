@@ -288,7 +288,7 @@ void Scan::set_categories() {
 void Scan::walk() {
     judge_on_workers();
     // Verdicts belong to this walk only.
-    struct Forget { Scan& scan; ~Forget() { scan.verdicts.clear(); scan.judged_entries.clear(); scan.next_verdict = 0; } } forget{*this};
+    struct Forget { Scan& scan; ~Forget() { scan.verdicts.clear(); scan.judged_entries.clear(); scan.next_verdict = 0; scan.staff_score_ahead.reset(); } } forget{*this};
     for (;;) {
         const std::int32_t category = std::int8_t(c.u8(at(local::category)));
         if (compare(c, category, c.i32(at(local::last_category))) > 0) return;

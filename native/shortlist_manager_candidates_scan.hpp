@@ -8,6 +8,7 @@
 #include "shortlist_manager_detail.hpp"
 #include "shortlist_manager_random.hpp"
 #include <array>
+#include <optional>
 #include <bit>
 #include <vector>
 
@@ -241,6 +242,11 @@ struct Scan {
     // judging. What an eligible entry's judging left for the valuation comes back with the verdict.
     struct Verdict {
         bool eligible = false;
+        // A staff row's score (0x101ad080), computed on the worker right after eligibility: it draws nothing,
+        // writes nothing outside its stack and reads nothing the walk writes (measured on the reference week,
+        // `--club-sharing`), so it does not depend on the entries before it.
+        bool scored = false;
+        std::uint32_t score = 0;
         std::array<std::uint32_t, 9> registers{};   // r13, r14, r18-r23, r25
         std::uint64_t f29 = 0, f30 = 0;
         std::array<std::uint8_t, 0xd8> locals{};    // the frame's 0x38-0x110
@@ -249,6 +255,17 @@ struct Scan {
     std::vector<std::uint32_t> judged_entries;
     std::vector<Verdict> verdicts;
     std::size_t next_verdict = 0;
+    std::optional<std::uint32_t> staff_score_ahead;   // the current entry's, from its verdict
+    // 0x101ad080(listings, person, club, its manager, the row's kind): a staff candidate's score.
+    // `kind_flip` alters the row's kind (the check's negative control only).
+    std::uint32_t staff_score(std::uint32_t kind_flip = 0) {
+        return program.call(0x101ad080, 0x1035fc04,
+                            {c.u32(c.toc(slot::listings)), person, club_address, club.manager(), row.kind() ^ kind_flip});
+    }
+    // CM_SHORTLIST_SCORE_CHECK=1: each score taken from a worker is computed again in place and compared (the
+    // score only: the in-place call itself leaves registers and stack as the walk's call did); =2 also
+    // has the workers score with the row's kind altered (kind ^ 1), a negative control that must show differences.
+    void check_staff_score(std::uint32_t ahead);
     bool judge_on_workers();
     void capture(Verdict&) const;
     void restore(const Verdict&);

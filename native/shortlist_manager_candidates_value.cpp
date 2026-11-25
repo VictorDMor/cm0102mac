@@ -28,8 +28,19 @@ void Scan::value() {
         set_price(std::int32_t(program.call(0x10361490, 0x1035fbdc,
                                             {manager, club_address, person, row_address, at(local::score), best, 1})));
     } else {
-        c.put32(at(local::score), program.call(0x101ad080, 0x1035fc04, {c.u32(c.toc(slot::listings)), person, club_address,
-                                                                         club.manager(), row.kind()}));
+        std::uint32_t score;
+        if (staff_score_ahead) {
+            // Scored on a worker with the entry's eligibility (Scan::judge_on_workers).
+            score = *staff_score_ahead;
+            staff_score_ahead.reset();
+            check_staff_score(score);
+            c.set(3, score);
+        } else {
+            if (shortlist_candidate_hook) [[unlikely]] shortlist_candidate_hook(c.s, 5);
+            score = staff_score();
+            if (shortlist_candidate_hook) [[unlikely]] shortlist_candidate_hook(c.s, 6);
+        }
+        c.put32(at(local::score), score);
         set_price(p.value());
     }
     const std::int32_t score = c.i32(at(local::score));
