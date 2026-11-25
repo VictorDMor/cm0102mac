@@ -1,6 +1,7 @@
 #include "match_speed.hpp"
 #include "match_presentation.hpp"
 #include "semantic_io_checks.hpp"
+#include "human_manager_adapter.hpp"
 #include <array>
 #include <utility>
 
@@ -26,6 +27,46 @@ std::uint32_t loaded_speed(State& s, std::uint32_t stored) {
     require(s.r<4>(12) == fixture + 0x202 && s.memory.read<2>(fixture + 0x1fe) == 0xa5a5 &&
             s.memory.read<2>(fixture + 0x202) == 0x5a5a, "Career loader's next field or a neighbour changed");
     return s.memory.read<2>(fixture + 0x200);
+}
+
+// One human whose record the speed accessors reach: the game record's current
+// human, its staff record and a table of one record, as HUMAN_MANAGER.CPP reads them.
+constexpr std::uint32_t human_table = fixture + 0x1000, game_record = fixture + 0x1100, staff_record = fixture + 0x1200,
+    staff_total = fixture + 0x1300, success_flag = fixture + 0x1400, message = fixture + 0x1500, pool = fixture + 0x1600,
+    records = fixture + 0x2000, speed_field = records + 0x9a66, call_stack = stack + 0x80;
+void human_fixture(State& s) {
+    s.memory.map(toc - 0x8000, 0x10000);
+    s.memory.map(stack - 0x1000, 0x2000);
+    s.wr<4>(8, toc);
+    for (const auto& [cell, value] : std::initializer_list<std::pair<std::int32_t, std::uint32_t>>{
+             {-0x7a54, human_table}, {-0x7bb0, game_record}, {-0x7be4, staff_total}, {-0x7bac, success_flag},
+             {-0x7ba8, message}, {-0x54a0, pool}})
+        s.memory.write<4>(toc + cell, value);
+    s.memory.write<4>(human_table, records);          // the records
+    s.memory.write<4>(human_table + 4, 1);            // one of them
+    s.memory.write<2>(game_record + 0x2c58, 0);       // human 0 is in play
+    s.memory.write<4>(game_record + 4, staff_record); // with this staff record
+    s.memory.write<4>(staff_record, 84);              // whose id less the staff count plus 16 is record 0
+    s.memory.write<4>(staff_total, 100);
+}
+// Runs the speed accessor at `entry` for the current human, as the match screen calls it.
+void call_accessor(State& s, std::uint32_t entry, std::uint32_t value) {
+    s.wr<4>(4, call_stack);
+    s.wr<4>(12, human_table);
+    s.wr<4>(16, entry == 0x10147bc0 ? 0 : value);
+    s.wr<4>(20, 0);
+    s.wr<4>(4128, return_sentinel);
+    s.pc = entry;
+    run_until(s, return_sentinel);
+}
+// The menu marks an entry when it is the saved selection: Turbo by the preference,
+// each original speed by the getter's answer. Exactly one may be marked.
+void require_single_mark(State& s, const char* when) {
+    call_accessor(s, 0x10147bc0, 0);
+    const auto getter = std::uint32_t(s.r<4>(12));
+    unsigned marked = native_match_speed() == turbo_match_speed ? 1 : 0;
+    for (const auto speed : {20u, 55u, 90u, 125u, 150u}) marked += getter == speed;
+    require(marked == 1, std::string("Speed menu does not mark exactly one entry ") + when);
 }
 }
 int main() {
@@ -105,8 +146,52 @@ int main() {
         bool fault = false;
         try { dispatch_page(s); } catch (const std::runtime_error&) { fault = true; }
         require(fault && native_match_speed() == 55, "Faulting original setter persisted a choice");
+        // The record's speed accessors are HUMAN_MANAGER.CPP's, which skips the hooks
+        // above: the generated entry applies the native choice around the rewrite.
+        human_fixture(s);
+        initialize_native_match_speed();
+        s.memory.write<2>(speed_field, 125);
+        require_single_mark(s, "after loading a career"); for (const auto from : {0u, 20u, 55u, 90u, 125u, 150u}) {
+            for (const auto to : {0u, 20u, 55u, 90u, 125u, 150u}) {
+                select_native_match_speed(std::uint16_t(from));
+                call_accessor(s, 0x10147d20, to);
+                require(native_match_speed() == to, "Setter through the rewrite did not update the preference");
+                require(s.memory.read<2>(speed_field) == (to == 0 ? 20 : to), "Rewrite's record does not hold an original speed");
+                require_single_mark(s, "after choosing a speed");
+            }
+        }
+        // A value the menu never gives reaches the record, not the preference.
+        select_native_match_speed(90);
+        call_accessor(s, 0x10147d20, 77);
+        require(native_match_speed() == 90 && s.memory.read<2>(speed_field) == 77, "Unlisted speed reached the preference");
+        // The wrapper acts only when the human's record exists, as the original's hooks
+        // do (a missing record reports and returns; the report needs the platform, which
+        // a check does not have, so the lookup is checked on its own).
+        require(human_record_found(s, human_table, 0) && human_record_found(s, human_table, staff_record),
+                "Existing record not found");
+        s.memory.write<4>(human_table + 4, 0);
+        require(!human_record_found(s, human_table, 0) && !human_record_found(s, human_table, staff_record),
+                "Missing record found");
+        s.memory.write<4>(human_table + 4, 1);
+        s.memory.write<4>(game_record + 4, 0);
+        require(!human_record_found(s, human_table, 0) && human_record_found(s, human_table, staff_record),
+                "No current human found");
+        s.memory.write<4>(game_record + 4, staff_record);
+        // A rewrite that declines leaves the original body (and its hooks) to run.
+        select_native_match_speed(90);
+        s.wr<4>(12, human_table);
+        s.wr<4>(16, 55);
+        s.wr<4>(20, 0);
+        {
+            struct Declining { Declining() { human_manager_declining = true; } ~Declining() { human_manager_declining = false; } } declining;
+            s.wr<4>(16, 0);
+            const bool getter_declined = !native_match_speed_through_human_manager(s, 0x10147bc0);
+            s.wr<4>(16, 55);
+            require(getter_declined && !native_match_speed_through_human_manager(s, 0x10147d20) &&
+                    native_match_speed() == 90 && s.r<4>(16) == 55, "Declined accessor changed the preference or a register");
+        }
         std::cout << "PASS: six native choices, Turbo default, original generated getter/setter, record kept original, "
-                     "constructor, cadence, presentation isolation and fault-safe preference\n";
+                     "constructor, cadence, presentation isolation, fault-safe preference and one marked menu entry through the rewritten accessors\n";
     } catch (const std::exception& e) {
         std::cerr << e.what() << '\n';
         return 1;

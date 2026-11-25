@@ -22,7 +22,7 @@ import struct
 from generation_storage import seed_generated
 from unsigned_division_audit import require_unsigned_division_routine
 from match_presentation_audit import require_match_presentation_context
-from match_speed_audit import require_match_speed_context, MATCH_SPEED_PAGES
+from match_speed_audit import require_match_speed_context, MATCH_SPEED_PAGES, MATCH_SPEED_HUMAN_ENTRIES
 from local_temporaries import LocalTemporaries
 from native_record_fields import CONTRACTS as NATIVE_RECORD_FIELDS, fingerprint as instruction_fingerprint, load_leaves, generate_native_record_fields
 from native_sort8 import ENTRY as NATIVE_SORT8_ENTRY, load_sort8, require_sort8_page, generate_sort8
@@ -927,7 +927,8 @@ def owner_entries_in_place(watched=frozenset()):
     # in-place call would skip the marker; the owner's C++ emits the markers inside its body itself (graph_carbon_text_panel.cpp).
     other = (set(SPECIAL_LOWERINGS) | set(NATIVE_RECORD_FIELDS) | {NATIVE_SORT8_ENTRY} | set(NATIVE_DRAWING_BOUNDARIES) |
              set(PROFILE_BOUNDARIES) | set(CALENDAR_ADAPTER_ENTRIES) | set(RNG_CORE_ENTRIES) |
-             set(CAPTURE_OBSERVATIONS) | {LIST_SEARCH_ENTRY, 0x101195e8, 0x10779ed8, 0x1071a828} | set(watched))
+             set(CAPTURE_OBSERVATIONS) | {LIST_SEARCH_ENTRY, 0x101195e8, 0x10779ed8, 0x1071a828} | set(watched) |
+             set(MATCH_SPEED_HUMAN_ENTRIES))  # the native speed wraps their hook, so no in-place call
     return {entry: module.removesuffix("_adapter") for entry, module in OWNER_REPLACEMENTS
             if module.endswith("_adapter") and module not in NONSTANDARD_OWNER_MODULES and counts[entry] == 1
             and entry not in other and entry >> 12 not in TURBO_PAGES
@@ -2471,6 +2472,12 @@ def generate_page(page, instructions, selected, local_temporaries=True, userops=
             code.append(injury_unit_hook(a))
         if finance_hooks and a in FINANCE_ENTRIES:
             code.append(finance_hook(a))
+        if human_manager_hooks and a in MATCH_SPEED_HUMAN_ENTRIES:
+            # The record's speed accessors are HUMAN_MANAGER.CPP's, so the
+            # hooks inside their original bodies no longer run; see match_speed.hpp.
+            if item["assembly"] != "mfspr r0,LR":
+                raise ValueError(f"Match-speed accessor entry changed at {a:x}")
+            code.append(f"if (native_match_speed_through_human_manager(s, 0x{a:x})) return true;")
         if human_manager_hooks and a in HUMAN_MANAGER_ENTRIES:
             code.append(human_manager_hook(a))
         if fog_of_war_hooks and a in FOG_OF_WAR_ENTRIES:

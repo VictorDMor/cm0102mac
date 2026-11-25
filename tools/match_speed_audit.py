@@ -13,10 +13,19 @@ CONTRACTS = {
     # The career loader's packed read of a manager's speed field, up to the
     # next field's address.
     (0x1014a824, 0x1014a854): "375e3bf589723da6e5715639d78092b0b62b66db87260d5c67ee42fb79e1da31",
+    # The whole getter and setter of the speed field, whose rewrite the native
+    # speed wraps (MATCH_SPEED_HUMAN_ENTRIES): the registers it reads and the
+    # return paths it assumes.
+    (0x10147bc0, 0x10147d14): "513c49a6a0ca133222c366d5c9d41616644f5a6a35388938273b405ab1ea24cb",
+    (0x10147d20, 0x10147e6c): "64d0350b79c63cca4134e8d021267bf0682b94f4df685a99ae5e45a8b0472e89",
 }
 MATCH_SPEED_PAGES = {first >> 12 for first, _ in CONTRACTS}
+# HUMAN_MANAGER.CPP's getter and setter of the record's speed field (+0x9a66).
+# Their hooks inside the original bodies (0x10147cf8, 0x10147e50) are skipped
+# when the rewrite runs, so the native speed is applied around the rewrite.
+MATCH_SPEED_HUMAN_ENTRIES = (0x10147bc0, 0x10147d20)
 ANCHORS = (0x10147cf8, 0x10147e50, 0x101fefc8, 0x101cce50,
-           0x10203574, 0x102036ac, 0x1028d558, 0x1014a854)
+           0x10203574, 0x102036ac, 0x1028d558, 0x1014a854, 0x10147bc0, 0x10147d20)
 
 def require_match_speed_context(page, instructions, selected):
     records = {row["address"]: row for row in instructions}

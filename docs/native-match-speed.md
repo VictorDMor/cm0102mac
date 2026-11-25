@@ -26,6 +26,16 @@ left 0 in the record and so in the save. Now, with the native speed on, the
 setter leaves 20 in the record when the choice is Turbo, and the loader turns a
 saved 0 into 20; the Turbo choice itself stays in the preference.
 
+The speed field's getter (`0x10147bc0`) and setter (`0x10147d20`) are HUMAN_MANAGER.CPP's
+C++ since 2026-11-24, which skips the hooks inside the original bodies. The generated
+entries therefore call `native_match_speed_through_human_manager` (match_speed.cpp)
+before the rewrite's hook: the getter answers the preference and the setter stores the
+choice in it (and 20 for Turbo in the record), only when the human's record exists, as the
+original hooks did. Without it the menu marked Turbo (the preference) and the original
+choice the record held at once, and a click on an original speed never reached the
+preference (so it was not saved either). Those two entries are also kept out of the in-place
+owner calls, which would bypass the entry.
+
 Turbo uses value 0 for presentation and the original value 20 for simulation
 cadence. Its commentary wait is capped at 20 ms. Original game clocks, sound
 completion, match calculations, halftime and user pauses remain in effect.

@@ -1,5 +1,6 @@
 #include "match_speed.hpp"
 #include "aot_runtime.hpp"
+#include "human_manager_detail.hpp"
 
 namespace cm::aot {
 void insert_turbo_match_speed(State& s) {
@@ -33,6 +34,38 @@ void insert_turbo_match_speed(State& s) {
 void keep_original_match_speed(State& s, std::uint32_t field) {
     if (native_match_speed_enabled() && s.memory.read<2>(field) == turbo_match_speed)
         s.memory.write<2>(field, turbo_simulation_speed);
+}
+
+// Whether the accessor finds its human's record: the original's body reaches the
+// hooks above only then (a missing record reports and returns 0).
+bool human_record_found(State& s, std::uint32_t humans, std::uint32_t staff) {
+    human_manager::Cpu c(s);
+    const auto given = human_manager::staff_or_current(c, staff);
+    return given && human_manager::index_of(c, humans, given);
+}
+
+bool native_match_speed_through_human_manager(State& s, std::uint32_t entry) {
+    constexpr std::uint32_t getter = 0x10147bc0, setter = 0x10147d20;
+    if (!native_match_speed_enabled() || (entry != getter && entry != setter)) return false;
+    // The arguments: the table in r3, and the staff in r4 (getter) or r5 (setter).
+    const auto table = std::uint32_t(s.r<4>(12));
+    const bool found = human_record_found(s, table, std::uint32_t(s.r<4>(entry == getter ? 16 : 20)));
+    if (entry == getter) {
+        if (!try_modern_human_manager(s, entry)) return false;
+        if (found) s.wr<4>(12, native_match_speed());
+        return true;
+    }
+    // The setter's value is in r4. The record keeps an original speed: Turbo's
+    // zero is stored as the speed it simulates at.
+    const auto argument = s.r<4>(16);
+    const auto value = std::uint16_t(argument);
+    const bool substituted = value == turbo_match_speed;
+    if (substituted) s.wr<4>(16, turbo_simulation_speed);
+    const bool handled = try_modern_human_manager(s, entry);
+    // The rewrite does not touch r4 on its way out; the substitute was only for the store.
+    if (substituted && s.r<4>(16) == turbo_simulation_speed) s.wr<4>(16, argument);
+    if (handled && found) select_native_match_speed(value);
+    return handled;
 }
 
 bool finish_turbo_match_speed_menu(State& s) {

@@ -27,6 +27,17 @@ struct State;
 // whatever the record holds. Called after the setter's store and after the
 // career loader's read of the field.
 void keep_original_match_speed(State&, std::uint32_t field);
+// HUMAN_MANAGER.CPP's getter (0x10147bc0) and setter (0x10147d20) of the record's
+// speed field replace the original bodies, so the hooks inside those bodies (the
+// getter's result, the setter's preference update and the record's zero) no longer
+// run. With the native speed on, the generator calls this before the rewrite's own
+// hook: it runs the rewrite, then reports the native preference from the getter,
+// or stores the choice in the preference (Turbo's zero as 20 in the record) from the
+// setter. False, with nothing done, when the rewrite declines (a checker runs the
+// original body, whose hooks apply) or the native speed is off.
+bool native_match_speed_through_human_manager(State&, std::uint32_t entry);
+// Whether the accessor's human has a record: the table in r3, the staff (0: the human in play).
+bool human_record_found(State&, std::uint32_t table, std::uint32_t staff);
 void insert_turbo_match_speed(State&);
 bool finish_turbo_match_speed_menu(State&);
 }
