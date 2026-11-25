@@ -10,8 +10,8 @@
 #include <cstdlib>
 #include <exception>
 
-// The eligibility of a scan's list entries judged on guest workers (TASKS.md, "The shortlist manager's 37%"):
-// experimental, see enabled(). A worker has the matches' private context (stack, scratch heap, TOC copy
+// The eligibility of a scan's list entries judged on guest workers (TASKS.md, "The shortlist manager's 37%"),
+// part of the game's Parallel Matches setting (see enabled()). A worker has the matches' private context (stack, scratch heap, TOC copy
 // with its own RNG words and scratch statics) and a copy of the scan's frame and registers as the walk finds
 // them; each entry is judged with its own RNG stream. What judging writes outside that context was measured on
 // the reference week and live on the multi-league career: the transfer manager's catch-up of a row's history
@@ -20,13 +20,12 @@
 // reader resets it before use).
 namespace cm::aot::shortlist_manager::candidates {
 namespace {
-// CM_SHORTLIST_PARALLEL=1 turns it on, and only together with the game's Parallel Matches setting (the day
-// driver's parallel order), so replays, checkers and a session that records a capture never use it. Whether the
-// setting alone should turn it on is Victor's to say (TASKS.md): the cursors' limit below makes results vary
-// from run to run.
+// On with the game's Parallel Matches setting (the day driver's parallel order; Victor, 2026-11-25), so replays,
+// checkers and a session that records a capture from launch never use it. CM_SHORTLIST_PARALLEL=0 turns it off
+// alone (for comparisons).
 bool enabled() {
-    static const bool asked = [] { const char* value = std::getenv("CM_SHORTLIST_PARALLEL"); return value && value[0] == '1' && !value[1]; }();
-    return asked && match_day_order() == MatchDayOrder::parallel;
+    static const bool refused = [] { const char* value = std::getenv("CM_SHORTLIST_PARALLEL"); return value && value[0] == '0' && !value[1]; }();
+    return !refused && match_day_order() == MatchDayOrder::parallel;
 }
 constexpr std::size_t fewest = 256;                    // below this a scan is judged in place
 constexpr std::uint32_t frame_size = 0x1b0;
