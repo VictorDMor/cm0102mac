@@ -9,6 +9,16 @@ the scrollback. Remove ticked items once their commit is pushed.
 
 - [x] Restart Game did nothing (Victor, 2026-11-24): the Mac original's confirmed restart calls an empty routine (0x1076f880, from the menu bar handler at 0x102a67b0 and 0x102a6a74). The host now takes those calls: the game closes through its exit routine and the application reopens at the start screen (native/restart_game.cpp). Checked in the driven game: Restart from the game's menu, Yes, the process ends normally and a new one starts. Not checked: the installed app (the same code path), a restart during a network game.
 
+## The shortlist manager's 37% (Victor, 2026-11-24: attack it, in parallel with the calendar screen)
+
+Where the week's largest block goes (the multi-league week's profile, `.local/logs/sample-multi.txt`; `.local/tools/sample_tree.py` and `sample_self.py` read it):
+
+- [x] Inclusive, game thread: `try_modern_shortlist_manager` 37.2%; under it `scan_candidates` (0x1035e9f0, `candidates::Scan`) 28.4%, reached mostly from `daily::refresh_club_shortlist` 24.5% -> `daily::share_out_budget` 22.1%; in the scan `Scan::eligible` 16.8% (common checks 7.1%, staff checks 3.7%, player checks 2.9%, sampling 2.3%) and `Scan::value` 10.8%. Beside it: `transition_staff_links` 6.4%, `distribute_staff_interest` 6.3%, `register_club_interest` 5.9%, `assess_candidate_contribution` 4.2%, `approach_targets` 2.5%.
+- [x] Self time under the shortlist manager is flat: no symbol above 2.5% of the thread (the owner's entry 2.5%, the scan's entry 1.7%, `dispatch_until` 1.6%, `Scan::eligible` 1.4%, `date::days_between` 1.3%, `Frame::leave` 1.1%, then dozens of small callees: human-control tests, contract lookups, database gates, binary searches). So the cost is the number of candidates times a long chain of small calls, not one slow routine.
+- [x] How often the same work is repeated (reference week's replay, a counter in `Scan::consider`, not committed): 1,041,924 candidates considered in seven days, 351,992 of them eligible (34%), for 7,646 distinct persons (one person up to 691 times) and 330,847 distinct (club, person) pairs: a person is judged about 136 times a week, a (club, person) pair about 3 times.
+- [ ] Next: split `Scan::eligible` and `Scan::value` into what depends only on the person (and the day) and what depends on the club, with call counts per callee; then keep the person-only answers for the day instead of asking again for every club. Constraints: results, RNG draws and the stack bytes a later reader reads must stay the original's (`--stack-audit` names the readers), and an answer kept for the day must be dropped when the pass itself changes what it was made from (a transfer concluded in the same pass). Check: strict replay with the same digest, the shortlist pair sweeps, paired timing (5 pairs at least).
+- Threads here are a second step, and only if the per-club work proves independent (the scan draws from the game's RNG in `take`, so order matters): measure sharing first, as for the matches.
+
 ## Holiday mode (Victor, 2026-11-24)
 
 Asked while the parallel play phase was in progress; both wait for it to land.
