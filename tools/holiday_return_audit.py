@@ -26,4 +26,6 @@ HOLIDAY_RETURN_HOOKS = {
     # In that routine, after it asked whether the manager (r24) has news: the one who just came back gets the screen.
     0x1011b540: ("extsb. r0,r3", "holiday_return::stop_for(s);"),
     0x1011b574: ("bl 0x102ce710", "holiday_return::stop_screen(s);"),
+    # The menu bar: how long a manager on holiday waits at a screen before continuing by himself (r16 = r3 + 2000).
+    0x102a6048: ("addi r16,r3,0x7d0", "if (holiday_return::pause(s)) goto i_102a604c;"),
 }

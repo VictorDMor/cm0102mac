@@ -445,6 +445,12 @@ namespace {
 std::vector<std::uint32_t> returning;
 std::uint64_t given = 0;
 }
+bool pause(State& s) {
+    // At 0x102a6048 the menu bar's handler has the tick of the manager's last step in r3 and computes, in r16,
+    // the tick from which a manager on holiday continues by himself: the original waits 2,000 ms at every stop.
+    s.wr<4>(16 * 4, std::uint32_t(s.r<4>(3 * 4)) + holiday_pause_ms);
+    return true;
+}
 void stop_for(State& s) {
     // At 0x1011b540, r24 is the manager the routine is asking about and r3 whether he has news to read.
     const auto manager = std::uint32_t(s.r<4>(24 * 4));

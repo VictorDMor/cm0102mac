@@ -91,6 +91,11 @@ void slot(State&);         // each time slot: ends the holiday on its date
 // In that routine, where it has asked whether a manager has news (0x1011b540): a manager whose holiday the date
 // ended this slot is treated as having some, so the routine gives him the screen that day.
 void stop_for(State&);
+// The pause before a manager on holiday continues by himself from a screen: 2,000 ms in the original, at every
+// stop of every game day, which was about a sixth of a holiday week's time. Shortened: long enough to see the
+// screen go by and to reach the menu's "return from holiday". The menu bar's handler asks at 0x102a6048.
+inline constexpr std::uint32_t holiday_pause_ms = 150;
+bool pause(State&);
 // Where it then opens that manager's news (0x1011b574): the screen that waits for him, not the one that goes on.
 void stop_screen(State&);
 // How many times stop_screen gave a returning manager the waiting screen (for the check).
