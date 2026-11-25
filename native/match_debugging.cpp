@@ -28,7 +28,7 @@ constexpr unsigned best_u23_action = 30023, b_team_action = 30024;
 constexpr unsigned call_up_action = 30031;
 constexpr unsigned force_purchase_action = 30025;
 constexpr unsigned force_staff_signing_action = 30033;
-constexpr unsigned maximize_attributes_action = 30009;
+constexpr unsigned maximize_attributes_action = 30009, recover_player_action = 30034;
 constexpr unsigned extend_contract_action = 30006, cancel_sale_action = 30007, remove_sale_clause_action = 30008;
 constexpr unsigned free_squad_action = 30017, extend_all_contracts_action = 30021;
 constexpr unsigned underdogs_action = 30018, underdogs_max_action = 30019;
@@ -306,7 +306,7 @@ constexpr std::array feature_labels{
     DebugText::underdogs_max, DebugText::add_goal, DebugText::repeat_goal,
     DebugText::red_cards, DebugText::injuries, DebugText::extend_all_contracts, DebugText::match_results,
     DebugText::force_purchase, DebugText::all_draws, DebugText::maximize_attributes,
-    DebugText::force_staff_signing};
+    DebugText::force_staff_signing, DebugText::recover_player};
 static_assert(feature_labels.size() == debug_feature_count);
 std::uint32_t debugging_modal_mode(State& s) {
     GuestCall call(s);
@@ -322,6 +322,7 @@ bool action_enabled(unsigned action) {
         case remove_sale_clause_action: return native_debugging_feature(DebugFeature::remove_sale_clause);
         case force_purchase_action: return native_debugging_feature(DebugFeature::force_purchase);
         case maximize_attributes_action: return native_debugging_feature(DebugFeature::maximize_attributes);
+        case recover_player_action: return native_debugging_feature(DebugFeature::recover_player);
         case underdogs_action: return native_debugging_feature(DebugFeature::underdogs);
         case underdogs_max_action: return native_debugging_feature(DebugFeature::underdogs_max);
         case match_results_action: return native_debugging_feature(DebugFeature::match_result);
@@ -1125,6 +1126,74 @@ bool select_debug_best_xi(State& s, std::uint32_t club, unsigned managed,
     return true;
 }
 
+namespace {
+std::uint32_t debug_attribute_player(const State& s, std::uint32_t staff);
+
+// A person's medical row (36 bytes per person id) names his live injury record at +0x10;
+// 0xffffffff means none (a recovering or fitness status is a record too).
+std::uint32_t medical_condition(State& s, std::uint32_t medical, std::uint32_t staff) {
+    return std::uint32_t(s.memory.read<4>(medical)) + std::uint32_t(s.memory.read<4>(staff)) * 0x24;
+}
+
+bool debug_injured(State& s, std::uint32_t medical, std::uint32_t staff) {
+    return s.memory.read<4>(medical_condition(s, medical, staff) + 0x10) != 0xffffffffu;
+}
+
+// The discipline store keeps four competition categories per person (8 bytes each, at +0x14
+// of the sorted index, 0x2c bytes per person) and a count of deferred bans at +0x28.
+bool debug_suspended(State& s, GuestCall& call, std::uint32_t discipline, std::uint32_t staff) {
+    const auto id = std::uint32_t(s.memory.read<4>(staff));
+    const auto row = std::uint32_t(s.memory.read<4>(discipline + 0x14)) + id * 0x2c;
+    if (signed_value<1>(s.memory.read<1>(row + 0x28)) > 0) return true;
+    for (unsigned category = 0; category < 4; ++category) {
+        const auto group = signed_value<1>(s.memory.read<1>(row + category * 8));
+        if (group < 0) continue;
+        const auto rules = std::uint32_t(s.memory.read<4>(s.memory.read<4>(discipline) + unsigned(group) * 4));
+        const auto record = call.call(0x105bc2b0, {rules, id, 0});
+        if (record && signed_value<2>(s.memory.read<2>(record + 6)) >= 0) return true;
+    }
+    return false;
+}
+
+void recover_player_injury(State& s, GuestCall& call, std::uint32_t medical, std::uint32_t staff) {
+    // Retire through the original medical operation so the live slot and
+    // completed history stay consistent. A full record reset erases history.
+    call.call(0x1018b9f0, {medical, staff, 0});
+    const auto queue = std::uint32_t(s.memory.read<4>(medical + 0x28));
+    if (queue)
+        while (const auto update = call.call(0x10186e10, {medical, staff}))
+            call.call(0x10738e60, {queue, update});
+    const auto condition = medical_condition(s, medical, staff);
+    s.memory.copy_in(condition, s.memory.copy_out(s.memory.read<4>(s.r<4>(8) - 0x7b80), 5));
+    s.memory.write<2>(condition + 8, 10000);
+    s.memory.write<2>(condition + 10, 10000);
+    s.memory.write<2>(condition + 12, 0);
+    s.memory.write<1>(condition + 0x14, 0xff); // No deferred medical risk.
+    s.memory.write<1>(condition + 0x15, 0);
+    s.memory.write<1>(condition + 0x20, 0);
+    s.memory.write<1>(condition + 0x21, 0xff);
+}
+
+void recover_player_suspension(State& s, GuestCall& call, std::uint32_t discipline, std::uint32_t staff) {
+    const auto id = std::uint32_t(s.memory.read<4>(staff));
+    // Each player has four competition categories. Removing an active ban
+    // through the original operation also detaches every linked category.
+    for (unsigned category = 0; category < 4; ++category) {
+        const auto index = std::uint32_t(s.memory.read<4>(discipline + 0x14)) + id * 0x2c + category * 8;
+        const auto group = signed_value<1>(s.memory.read<1>(index));
+        if (group < 0) continue;
+        const auto rules = std::uint32_t(s.memory.read<4>(s.memory.read<4>(discipline) + unsigned(group) * 4));
+        const auto record = call.call(0x105bc2b0, {rules, id, 0});
+        if (record) {
+            const auto ban = signed_value<2>(s.memory.read<2>(record + 6));
+            if (ban >= 0) call.call(0x100e0090, {discipline, id, unsigned(ban)});
+        }
+    }
+    // Cancel deferred bans too, retaining disciplinary history and cards.
+    call.call(0x100df950, {discipline, staff});
+}
+}
+
 bool recover_debug_squad(State& s, std::uint32_t club) {
     if (!native_debugging_feature(DebugFeature::recover_players) || !club) return false;
     const auto medical = std::uint32_t(s.memory.read<4>(s.memory.read<4>(s.r<4>(8) - 0x7ba0)));
@@ -1141,39 +1210,34 @@ bool recover_debug_squad(State& s, std::uint32_t club) {
     }
     GuestCall call(s);
     for (const auto staff : players) {
-        const auto id = std::uint32_t(s.memory.read<4>(staff));
-        // Retire through the original medical operation so the live slot and
-        // completed history stay consistent. A full record reset erases history.
-        call.call(0x1018b9f0, {medical, staff, 0});
-        const auto queue = std::uint32_t(s.memory.read<4>(medical + 0x28));
-        if (queue)
-            while (const auto update = call.call(0x10186e10, {medical, staff}))
-                call.call(0x10738e60, {queue, update});
-        const auto condition = std::uint32_t(s.memory.read<4>(medical)) + id * 0x24;
-        s.memory.copy_in(condition, s.memory.copy_out(s.memory.read<4>(s.r<4>(8) - 0x7b80), 5));
-        s.memory.write<2>(condition + 8, 10000);
-        s.memory.write<2>(condition + 10, 10000);
-        s.memory.write<2>(condition + 12, 0);
-        s.memory.write<1>(condition + 0x14, 0xff); // No deferred medical risk.
-        s.memory.write<1>(condition + 0x15, 0);
-        s.memory.write<1>(condition + 0x20, 0);
-        s.memory.write<1>(condition + 0x21, 0xff);
-        // Each player has four competition categories. Removing an active ban
-        // through the original operation also detaches every linked category.
-        for (unsigned category = 0; category < 4; ++category) {
-            const auto index = std::uint32_t(s.memory.read<4>(discipline + 0x14)) + id * 0x2c + category * 8;
-            const auto group = signed_value<1>(s.memory.read<1>(index));
-            if (group < 0) continue;
-            const auto rules = std::uint32_t(s.memory.read<4>(s.memory.read<4>(discipline) + unsigned(group) * 4));
-            const auto record = call.call(0x105bc2b0, {rules, id, 0});
-            if (record) {
-                const auto ban = signed_value<2>(s.memory.read<2>(record + 6));
-                if (ban >= 0) call.call(0x100e0090, {discipline, id, unsigned(ban)});
-            }
-        }
-        // Cancel deferred bans too, retaining disciplinary history and cards.
-        call.call(0x100df950, {discipline, staff});
+        recover_player_injury(s, call, medical, staff);
+        recover_player_suspension(s, call, discipline, staff);
     }
+    return true;
+}
+
+namespace {
+bool debug_recoverable_player(State& s, GuestCall& call, std::uint32_t staff, std::uint32_t& medical,
+                              std::uint32_t& discipline, bool& injured, bool& suspended) {
+    if (!debug_attribute_player(s, staff)) return false;
+    medical = std::uint32_t(s.memory.read<4>(s.memory.read<4>(s.r<4>(8) - 0x7ba0)));
+    discipline = std::uint32_t(s.memory.read<4>(s.memory.read<4>(s.r<4>(8) - 0x7aa4)));
+    if (!medical || !discipline) return false;
+    injured = debug_injured(s, medical, staff);
+    suspended = debug_suspended(s, call, discipline, staff);
+    return injured || suspended;
+}
+}
+
+bool recover_debug_player(State& s, std::uint32_t staff) {
+    if (!native_debugging_feature(DebugFeature::recover_player)) return false;
+    std::uint32_t medical, discipline;
+    bool injured, suspended;
+    GuestCall call(s);
+    if (!debug_recoverable_player(s, call, staff, medical, discipline, injured, suspended)) return false;
+    // The same operations as the squad recovery, run only for what this person has.
+    if (injured) recover_player_injury(s, call, medical, staff);
+    if (suspended) recover_player_suspension(s, call, discipline, staff);
     return true;
 }
 
@@ -1795,13 +1859,18 @@ void append_debug_contract_action(State& s) {
     const auto staff_enabled = native_debugging_feature(staff_signing_option);
     if (!action_enabled(extend_contract_action) && !action_enabled(remove_sale_clause_action) &&
         !action_enabled(cancel_sale_action) && !action_enabled(force_purchase_action) &&
-        !action_enabled(maximize_attributes_action) && !staff_enabled) return;
+        !action_enabled(maximize_attributes_action) && !action_enabled(recover_player_action) && !staff_enabled) return;
     const auto staff = std::uint32_t(s.r<4>(23 * 4));
     const auto original_stack = std::uint32_t(s.r<4>(4));
     GuestCall call(s);
     // Attribute changes also apply to real unattached players. Contract-only
     // actions still require a primary contract; never show an empty submenu.
     const bool maximize = action_enabled(maximize_attributes_action) && debug_attribute_player(s, staff);
+    // Recovery applies to any person who is injured or suspended, with or without a contract.
+    std::uint32_t medical, discipline;
+    bool injured, suspended;
+    const bool recover = action_enabled(recover_player_action) &&
+        debug_recoverable_player(s, call, staff, medical, discipline, injured, suspended);
     const auto contract = debug_primary_contract(s, call, staff);
     const bool extend = contract && action_enabled(extend_contract_action);
     const bool clause = contract && action_enabled(remove_sale_clause_action) && s.memory.read<1>(contract + 0x1d);
@@ -1810,7 +1879,7 @@ void append_debug_contract_action(State& s) {
     const bool purchase = contract && action_enabled(force_purchase_action) && eligible_ai_employer(s, call, contract);
     guest::Cpu c(s);
     const bool sign_staff = staff_enabled && staff_signing_role(c, staff) && eligible_staff_signing_clubs(c, call, staff);
-    if (!maximize && !extend && !clause && !sale && !purchase && !sign_staff) return;
+    if (!maximize && !recover && !extend && !clause && !sale && !purchase && !sign_staff) return;
     // Build the same parent control and child menu used by the original
     // player comparison menu, then add the debugging actions to that child.
     const auto ui = root(s), page = screen(s, ui);
@@ -1828,6 +1897,7 @@ void append_debug_contract_action(State& s) {
             std::uint32_t(s.memory.read<2>(original_stack + 0x6e)),
             call.text(debug_text(s, text)), action, 0});
     };
+    if (recover) append(DebugText::recover_player, recover_player_action);
     if (maximize) append(DebugText::maximize_attributes, maximize_attributes_action);
     if (extend) append(DebugText::extend_contract, extend_contract_action);
     if (clause) append(DebugText::remove_sale_clause, remove_sale_clause_action);
@@ -1843,7 +1913,8 @@ bool dispatch_debug_contract_action(State& s) {
     const auto action = s.memory.read<4>(control + 8);
     if (action == force_staff_signing_action) return dispatch_debug_staff_signing(s, control);
     if (action != extend_contract_action && action != cancel_sale_action &&
-        action != remove_sale_clause_action && action != force_purchase_action && action != maximize_attributes_action) return false;
+        action != remove_sale_clause_action && action != force_purchase_action && action != maximize_attributes_action &&
+        action != recover_player_action) return false;
     bool accepted = false;
     std::int32_t result = 0;
     if (s.memory.read<4>(control + 12) & 2) {
@@ -1859,6 +1930,7 @@ bool dispatch_debug_contract_action(State& s) {
                     result = -4;
             }
         } else if (action == maximize_attributes_action) accepted = maximize_debug_player_attributes(s, staff);
+        else if (action == recover_player_action) accepted = recover_debug_player(s, staff);
         else if (action == extend_contract_action) accepted = extend_debug_contract(s, staff);
         else if (action == remove_sale_clause_action) accepted = remove_debug_sale_clause(s, staff);
         else if (action == cancel_sale_action && current_managed_employer(s, call, staff))

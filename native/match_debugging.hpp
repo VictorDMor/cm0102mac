@@ -13,7 +13,7 @@ void initialize_native_debugging(bool enabled = false);
 void select_native_debugging(bool enabled);
 enum class DebugFeature : unsigned { recover_players, play_for_free, extend_contract, cancel_sale,
     remove_sale_clause, underdogs, underdogs_max, add_goal, repeat_goal, red_cards, injuries, extend_all_contracts,
-    match_result, force_purchase, all_draws, maximize_attributes, force_staff_signing, count };
+    match_result, force_purchase, all_draws, maximize_attributes, force_staff_signing, recover_player, count };
 constexpr unsigned debug_feature_count = unsigned(DebugFeature::count);
 constexpr std::uint32_t all_debug_features = (1u << debug_feature_count) - 1;
 std::uint32_t native_debugging_features();
@@ -59,6 +59,10 @@ bool select_debug_best_xi(State&, std::uint32_t club, unsigned managed,
                          LineupMode mode = LineupMode::best_xi);
 // Recover every player in the club roster, including unselected reserves.
 bool recover_debug_squad(State&, std::uint32_t club);
+// Recover one person: end a live injury and clear active and deferred suspensions,
+// with the same original operations as the squad recovery. A person with neither is
+// left untouched and the call returns false.
+bool recover_debug_player(State&, std::uint32_t staff);
 // Set every roster player's primary-contract wage to zero (one euro if the
 // original store refuses zero) and clear clauses, bonuses and the release amount.
 bool free_debug_squad(State&, std::uint32_t club);

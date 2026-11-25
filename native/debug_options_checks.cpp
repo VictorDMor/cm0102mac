@@ -583,11 +583,14 @@ int main(int argc, char** argv) {
             for (auto text : {DebugText::options, DebugText::underdogs, DebugText::underdogs_max,
                              DebugText::repeat_goal, DebugText::red_cards, DebugText::injuries,
                              DebugText::extend_all_contracts, DebugText::force_purchase, DebugText::maximize_attributes,
-                             DebugText::club_rule_pair_hint})
+                             DebugText::club_rule_pair_hint, DebugText::recover_player})
                 require(!debug_text(language, text).empty(), "Missing translation");
         require(debug_text(9, DebugText::extend_all_contracts) == "Renovar Todos os Contratos por 1 Ano" &&
                 debug_text(255, DebugText::extend_all_contracts) == "Extend All Contracts by 1 Year", "Collective renewal labels");
         require(debug_text(9, DebugText::force_purchase) == "For\347ar Compra", "Portuguese purchase label");
+        require(debug_text(9, DebugText::recover_player) == "Recuperar Jogador" &&
+                debug_text(0, DebugText::recover_player) == "Recover Player" &&
+                debug_text(255, DebugText::recover_player) == "Recover Player", "Recover Player labels");
         std::uint32_t managed_club = 0;
         for (unsigned i = 0; i < c.u32(c.toc(-0x7b50)) && !managed_club; ++i) {
             const auto club = c.u32(c.toc(-0x7be8)) + i * 0x248;
@@ -769,6 +772,113 @@ int main(int argc, char** argv) {
                 "Stale disabled Maximize Attributes action changed the player");
         s.memory.copy_in(target, before_max_staff);
         s.memory.copy_in(profile, before_max_profile);
+        {
+            // Recover Player shares the player Debugging menu and appears only for a person who is
+            // injured or suspended; its own switch gates it.
+            const auto medical = c.u32(c.toc(-0x7ba0));
+            const auto condition = [&](std::uint32_t person) { return c.u32(medical) + c.u32(person) * 0x24; };
+            const auto has_action = [&](unsigned action) {
+                for (unsigned i = 0; i < c.u16(page() + 0x129da6); ++i)
+                    if (c.u32(item_address(i) + 8) == action) return true;
+                return false;
+            };
+            const auto healthy_row = [&] { return c.u32(condition(target) + 0x10) == 0xffffffffu; };
+            if (!healthy_row()) { invoke(0x1018b9f0, {medical, target, 0}); }
+            require(healthy_row(), "Fixture player must start without an injury");
+            select_native_debugging_features(1u << unsigned(DebugFeature::recover_player));
+            build_profile_debug_menu(target);
+            require(!has_action(30034), "Recover Player offered for a person with nothing to recover");
+            const auto neighbours = [&] {
+                std::vector<std::uint8_t> rows;
+                for (const auto person : {target - 0x70, target + 0x70}) {
+                    const auto row = s.memory.copy_out(condition(person), 0x24);
+                    rows.insert(rows.end(), row.begin(), row.end());
+                }
+                return rows;
+            };
+            const auto untouched = neighbours();
+            const auto untouched_target = s.memory.copy_out(target, 0x70);
+            // Closing an injury files it in the original history files.
+            TransferFiles files;
+            std::filesystem::create_directories(files.path / "game");
+            std::filesystem::create_directories(files.path / "working/Files");
+            for (const auto name : {"staff history.tmp", "player stats history.tmp"}) {
+                std::ofstream(files.path / "working/Files" / name, std::ios::binary).close();
+                std::filesystem::resize_file(files.path / "working/Files" / name, 2 * 1024 * 1024);
+            }
+            s.platform = std::make_shared<NativePlatform>(files.path / "game", files.path / "working",
+                                                         AudioMode::offline, EventMode::isolated);
+            struct DropPlatform { State& state; ~DropPlatform() { state.platform.reset(); } } drop_platform{s};
+            c.put32(c.sp() + 0x38, 0);
+            invoke(0x10188cc0, {medical, 5, 0, target, 0, 1, 0xffffffffu, 0});
+            require(c.r(3) != 0xffffffffu && !healthy_row(), "Could not injure the fixture player");
+            const auto random = s.memory.copy_out(c.toc(-0x7b90), 0x10);
+            build_profile_debug_menu(target);
+            require(has_action(30034) && text_of(control(30034, 0)) == "     " + std::string(debug_text(s, DebugText::recover_player)),
+                    "Missing Recover Player in the injured player's Debugging menu");
+            select_native_debugging_features(1u << unsigned(DebugFeature::maximize_attributes));
+            build_profile_debug_menu(target);
+            require(!has_action(30034), "Recover Player shown with its switch off");
+            require(command(0x103a72c0, 30034) == 0 && !healthy_row(), "Stale disabled Recover Player changed the player");
+            select_native_debugging_features(1u << unsigned(DebugFeature::recover_player));
+            require(command(0x103a72c0, 30034) == -11 && healthy_row() &&
+                    c.u16(condition(target) + 8) == 10000 && c.u16(condition(target) + 10) == 10000,
+                    "Recover Player did not end the injury");
+            require(s.memory.copy_out(target, 0x70) == untouched_target && neighbours() == untouched &&
+                    s.memory.copy_out(c.toc(-0x7b90), 0x10) == random, "Recover Player changed another record or the RNG");
+            require(command(0x103a72c0, 30034) == 0, "Recover Player acted on a recovered player");
+            build_profile_debug_menu(target);
+            require(!has_action(30034), "Recover Player offered again after recovery");
+            // Suspension: a real match-count ban in the original discipline store.
+            const auto discipline = c.u32(c.toc(-0x7aa4));
+            const auto rule_slots = c.u32(discipline);
+            unsigned group = 42;
+            for (unsigned i = 0; i < 42 && group == 42; ++i) {
+                const auto rules = c.u32(rule_slots + i * 4);
+                if (rules && c.u8(rules + 4) == 0) group = i;
+            }
+            if (group == 42) {
+                for (unsigned i = 0; i < 42 && group == 42; ++i)
+                    if (!c.u32(rule_slots + i * 4)) group = i;
+                require(group < 42, "No empty disciplinary rule slot");
+                invoke(0x10773520, {0x24});
+                const auto rules = c.r(3);
+                invoke(0x105b7030, {rules, 0});
+                c.put8(rules + 4, 0); c.put8(rules + 5, group);
+                c.put32(rule_slots + group * 4, rules);
+            }
+            const auto rules = c.u32(rule_slots + group * 4);
+            const auto banned = [&] {
+                invoke(0x105bc600, {rules, target, 0, 0, 0});
+                return c.r(3) != 0;
+            };
+            invoke(0x10773520, {128});
+            const auto scratch = c.r(3);
+            s.memory.copy_in(scratch, std::vector<std::uint8_t>(24, 0xff));
+            c.put8(scratch, 3); c.put8(scratch + 1, 0); c.put16(scratch + 2, 0xffff);
+            s.memory.copy_in(scratch + 4, s.memory.copy_out(c.toc(-0x7b80), 5));
+            c.put8(scratch + 0xc, group);
+            c.put32(scratch + 0x14, 0x40000000);
+            invoke(0x100dfb30, {discipline, c.u32(target), scratch});
+            require(banned() && healthy_row(), "Could not suspend the fixture player");
+            const auto fit_row = s.memory.copy_out(condition(target), 0x24);
+            const auto untouched_neighbours = neighbours();
+            build_profile_debug_menu(target);
+            require(has_action(30034), "Recover Player missing for a suspended player");
+            require(command(0x103a72c0, 30034) == -11 && !banned() && healthy_row() &&
+                    s.memory.copy_out(condition(target), 0x24) == fit_row && neighbours() == untouched_neighbours,
+                    "Recover Player did not clear only the suspension");
+            // Injured and suspended together: both end.
+            invoke(0x100dfb30, {discipline, c.u32(target), scratch});
+            c.put32(c.sp() + 0x38, 0);
+            invoke(0x10188cc0, {medical, 5, 0, target, 0, 1, 0xffffffffu, 0});
+            require(banned() && !healthy_row(), "Could not injure and suspend the fixture player");
+            require(command(0x103a72c0, 30034) == -11 && !banned() && healthy_row(),
+                    "Recover Player did not end both the injury and the suspension");
+            require(neighbours() == untouched_neighbours && s.memory.copy_out(c.toc(-0x7b90), 0x10) == random,
+                    "Combined recovery changed another record or the RNG");
+            select_native_debugging_features(1u << unsigned(DebugFeature::force_purchase));
+        }
         require(command(0x103a72c0, 30025) == -4, "Force Purchase did not open the original proposal screen");
         invoke(0x1073ef70, {ui, forced_proposal_seller_slot});
         require(c.r(3) == c.u32(seller) + 1, "Proposal did not retain its original seller");

@@ -279,18 +279,7 @@ void check_recovery(State& s, std::uint32_t club, std::uint32_t opponent,
     const auto lineup = squad(s, tactics, club);
     const auto original_tactics = s.memory.copy_out(formation, 0x18e0);
     const auto roster = s.memory.copy_out(club + 0x98, 200);
-    select_native_debugging_features(all_debug_features & ~(1u << unsigned(DebugFeature::recover_players)));
-    const auto before = s.memory.copy_out(condition(players.front()), 0x24);
-    const auto executed = s.executed;
-    require(!recover_debug_squad(s, club) && s.executed == executed &&
-            before == s.memory.copy_out(condition(players.front()), 0x24), "Disabled recovery changed state");
-    select_native_debugging(true);
-    const auto registers = s.registers;
-    const auto unique = s.unique;
-    const auto pc = s.pc;
-    require(recover_debug_squad(s, club), "Squad recovery rejected the actual club");
-    require(s.registers == registers && s.unique == unique && s.pc == pc, "Recovery clobbered caller");
-    for (const auto staff : players) {
+    const auto require_recovered = [&](std::uint32_t staff) {
         const auto record = condition(staff);
         require(s.memory.read<4>(record + 0x10) == 0xffffffff &&
                 s.memory.read<1>(record + 0x14) == 0xff && !s.memory.read<1>(record + 0x15), "Medical risk/injury survived");
@@ -306,7 +295,103 @@ void check_recovery(State& s, std::uint32_t club, std::uint32_t opponent,
             require(!invoke(s, 0x105bc600, {rules, staff, 0, 0, 0}), "Active suspension survived");
         }
         require(!s.memory.read<1>(indexes + s.memory.read<4>(staff) * 0x2c + 0x28), "Deferred suspension survived");
+    };
+    // Recover Player: one person at a time, with the squad recovery's operations.
+    const auto discipline_row = [&](std::uint32_t staff) {
+        return s.memory.copy_out(indexes + s.memory.read<4>(staff) * 0x2c, 0x2c);
+    };
+    const auto injured = [&](std::uint32_t staff) { return s.memory.read<4>(condition(staff) + 0x10) != 0xffffffff; };
+    const auto is_suspended = [&](std::uint32_t staff) {
+        return std::find(suspended.begin(), suspended.end(), staff) != suspended.end() || staff == players.back();
+    };
+    const auto everyone = [&] {
+        std::vector<std::vector<std::uint8_t>> rows;
+        for (const auto staff : players) {
+            rows.push_back(s.memory.copy_out(condition(staff), 0x24));
+            rows.push_back(discipline_row(staff));
+        }
+        rows.push_back(s.memory.copy_out(condition(outsider), 0x24));
+        rows.push_back(discipline_row(outsider));
+        return rows;
+    };
+    const auto only_changed = [&](const std::vector<std::vector<std::uint8_t>>& before, std::uint32_t staff) {
+        const auto after = everyone();
+        for (std::size_t i = 0; i < before.size(); ++i) {
+            const bool target = i < 2 * players.size() && players[i / 2] == staff;
+            if (!target && before[i] != after[i]) return false;
+        }
+        return true;
+    };
+    const auto healthy = std::find_if(players.begin(), players.end(), [&](auto staff) {
+        return !injured(staff) && !is_suspended(staff);
+    });
+    const auto suspended_only = std::find_if(suspended.begin(), suspended.end(), [&](auto staff) { return !injured(staff); });
+    const auto injured_only = std::find_if(players.begin(), players.end(), [&](auto staff) {
+        return injured(staff) && !is_suspended(staff);
+    });
+    require(healthy != players.end() && suspended_only != suspended.end() && injured_only != players.end(),
+            "Need healthy, suspended-only and injured-only players for single recovery");
+    const auto healthy_staff = *healthy, suspended_staff = *suspended_only, injured_staff = *injured_only;
+    // Both: the deferred-ban player gets a live injury as well (it already has a queued medical update).
+    const auto both_staff = players.back();
+    if (!injured(both_staff)) injury(both_staff, 5);
+    require(injured(both_staff) && is_suspended(both_staff), "Need an injured and suspended player");
+    {
+        // Feature off: refused and nothing changes.
+        select_native_debugging_features(all_debug_features & ~(1u << unsigned(DebugFeature::recover_player)));
+        const auto before = everyone();
+        const auto executed = s.executed;
+        require(!recover_debug_player(s, injured_staff) && !recover_debug_player(s, both_staff) &&
+                s.executed == executed && everyone() == before, "Disabled Recover Player changed state");
+        select_native_debugging_features(1u << unsigned(DebugFeature::recover_player));
+        // Refused: nobody, a non-person, and a person with neither problem.
+        const auto healthy_before = everyone();
+        require(!recover_debug_player(s, 0) && !recover_debug_player(s, club) && !recover_debug_player(s, tactics) &&
+                !recover_debug_player(s, healthy_staff) && everyone() == healthy_before,
+                "Recover Player accepted an invalid or healthy person");
+        require(recover_debug_player(s, injured_staff) == true, "Injured player was not recovered");
+        const auto registers = s.registers; const auto unique = s.unique; const auto pc = s.pc;
+        // Injury only: the same state as after the squad recovery, nobody else touched.
+        require_recovered(injured_staff);
+        require(only_changed(healthy_before, injured_staff), "Recover Player changed another person");
+        require(!recover_debug_player(s, injured_staff), "Recovered player offered a second recovery");
+        // Suspension only: the ban goes, the fitness figures and medical risk of a fit player stay.
+        const auto fit_before = s.memory.copy_out(condition(suspended_staff), 0x24);
+        const auto others = everyone();
+        require(recover_debug_player(s, suspended_staff), "Suspended player was not recovered");
+        require(s.memory.copy_out(condition(suspended_staff), 0x24) == fit_before &&
+                s.memory.read<2>(condition(suspended_staff) + 8) == 6200, "Recover Player changed a fit player's condition");
+        for (unsigned category = 0; category < 4; ++category) {
+            const auto index = indexes + s.memory.read<4>(suspended_staff) * 0x2c + category * 8;
+            const auto group = signed_value<1>(s.memory.read<1>(index));
+            if (group < 0) continue;
+            const auto rules = std::uint32_t(s.memory.read<4>(s.memory.read<4>(discipline) + unsigned(group) * 4));
+            require(!invoke(s, 0x105bc600, {rules, suspended_staff, 0, 0, 0}), "Single recovery left an active suspension");
+        }
+        require(only_changed(others, suspended_staff), "Suspension recovery changed another person");
+        // Both: injury, queued medical update, active/deferred ban.
+        const auto others_both = everyone();
+        require(invoke(s, 0x10186e10, {medical, both_staff}) &&
+                s.memory.read<1>(indexes + s.memory.read<4>(both_staff) * 0x2c + 0x28), "Combined fixture lost its queue");
+        require(recover_debug_player(s, both_staff), "Injured and suspended player was not recovered");
+        require_recovered(both_staff);
+        require(only_changed(others_both, both_staff), "Combined recovery changed another person");
+        require(s.registers == registers && s.unique == unique && s.pc == pc, "Recover Player clobbered caller");
+        require(invoke(s, 0x1018c1a0, {medical, injured_staff}), "Single recovery lost completed injury history");
+        require(invoke(s, 0x10186e10, {medical, outsider}), "Single recovery removed opponent medical update");
     }
+    select_native_debugging_features(all_debug_features & ~(1u << unsigned(DebugFeature::recover_players)));
+    const auto before = s.memory.copy_out(condition(players.front()), 0x24);
+    const auto executed = s.executed;
+    require(!recover_debug_squad(s, club) && s.executed == executed &&
+            before == s.memory.copy_out(condition(players.front()), 0x24), "Disabled recovery changed state");
+    select_native_debugging(true);
+    const auto registers = s.registers;
+    const auto unique = s.unique;
+    const auto pc = s.pc;
+    require(recover_debug_squad(s, club), "Squad recovery rejected the actual club");
+    require(s.registers == registers && s.unique == unique && s.pc == pc, "Recovery clobbered caller");
+    for (const auto staff : players) require_recovered(staff);
     require(invoke(s, 0x1018c1a0, {medical, selected[0]}), "Recovery lost completed injury history");
     require(invoke(s, 0x10186e10, {medical, outsider}), "Recovery removed opponent medical update");
     require(s.memory.copy_out(condition(outsider), 0x24) == outside_condition &&

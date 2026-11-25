@@ -11,6 +11,13 @@ std::string_view debug_text(unsigned language, DebugText text) {
             "Tving signering", "For\347ar Assinar", "Tvinga kontrakt"};
         return labels[language < labels.size() ? language : 0];
     }
+    if (text == DebugText::recover_player) {
+        static constexpr std::array<std::string_view, 11> labels{
+            "Recover Player", "Recover Player", "R\351cup\351rer le joueur", "Spieler wiederherstellen",
+            "Recupera giocatore", "Recuperar jugador", "Gendan spiller", "Speler herstellen",
+            "Gjenopprett spiller", "Recuperar Jogador", "\305terst\344ll spelare"};
+        return labels[language < labels.size() ? language : 0];
+    }
     if (text == DebugText::club_rule_pair_hint) {
         static constexpr std::array<std::string_view, 11> labels{
             "Two listed teams: only Win vs Loss keeps the club rules.",
