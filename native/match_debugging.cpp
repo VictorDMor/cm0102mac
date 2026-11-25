@@ -30,7 +30,7 @@ constexpr unsigned force_purchase_action = 30025;
 constexpr unsigned force_staff_signing_action = 30033;
 constexpr unsigned maximize_attributes_action = 30009, recover_player_action = 30034;
 constexpr unsigned extend_contract_action = 30006, cancel_sale_action = 30007, remove_sale_clause_action = 30008;
-constexpr unsigned free_squad_action = 30017, extend_all_contracts_action = 30021;
+constexpr unsigned free_squad_action = 30017, extend_all_contracts_action = 30021, remove_unhappiness_action = 30035;
 constexpr unsigned underdogs_action = 30018, underdogs_max_action = 30019;
 constexpr unsigned match_results_action = 30022, all_draws_action = 30030;
 // Right-click overlays on a fixture row's home name, "v" and away name.
@@ -306,7 +306,7 @@ constexpr std::array feature_labels{
     DebugText::underdogs_max, DebugText::add_goal, DebugText::repeat_goal,
     DebugText::red_cards, DebugText::injuries, DebugText::extend_all_contracts, DebugText::match_results,
     DebugText::force_purchase, DebugText::all_draws, DebugText::maximize_attributes,
-    DebugText::force_staff_signing, DebugText::recover_player};
+    DebugText::force_staff_signing, DebugText::recover_player, DebugText::remove_unhappiness};
 static_assert(feature_labels.size() == debug_feature_count);
 std::uint32_t debugging_modal_mode(State& s) {
     GuestCall call(s);
@@ -317,6 +317,7 @@ bool action_enabled(unsigned action) {
         case recover_squad_action: return native_debugging_feature(DebugFeature::recover_players);
         case free_squad_action: return native_debugging_feature(DebugFeature::play_for_free);
         case extend_all_contracts_action: return native_debugging_feature(DebugFeature::extend_all_contracts);
+        case remove_unhappiness_action: return native_debugging_feature(DebugFeature::remove_unhappiness);
         case extend_contract_action: return native_debugging_feature(DebugFeature::extend_contract);
         case cancel_sale_action: return native_debugging_feature(DebugFeature::cancel_sale);
         case remove_sale_clause_action: return native_debugging_feature(DebugFeature::remove_sale_clause);
@@ -1283,7 +1284,7 @@ void append_best_xi_control(State& s) {
     const auto paper = std::uint32_t(s.memory.read<2>(s.memory.read<4>(s.r<4>(8) - 0x7bc8)));
     call.args({0, 1, 0, 0xffffffffu});
     const bool debug_squad = action_enabled(recover_squad_action) || action_enabled(free_squad_action) ||
-                             action_enabled(extend_all_contracts_action);
+                             action_enabled(extend_all_contracts_action) || action_enabled(remove_unhappiness_action);
     const auto toc = std::uint32_t(s.r<4>(8));
     const auto menu_paper = std::uint32_t(s.memory.read<2>(s.memory.read<4>(toc - 0x7bcc)));
     const auto menu_ink = std::uint32_t(s.memory.read<2>(s.memory.read<4>(toc - 0x7bd0)));
@@ -1313,6 +1314,7 @@ void append_best_xi_control(State& s) {
     if (action_enabled(recover_squad_action)) item(menu, DebugText::recover_players, recover_squad_action);
     if (action_enabled(free_squad_action)) item(menu, DebugText::play_for_free, free_squad_action);
     if (action_enabled(extend_all_contracts_action)) item(menu, DebugText::extend_all_contracts, extend_all_contracts_action);
+    if (action_enabled(remove_unhappiness_action)) item(menu, DebugText::remove_unhappiness, remove_unhappiness_action);
 }
 
 bool dispatch_best_xi_control(State& s) {
@@ -1339,7 +1341,7 @@ bool dispatch_best_xi_control(State& s) {
     const bool lineup_action = action == best_xi_action || action == best_u23_action || action == b_team_action ||
                                action == call_up_action;
     if (!lineup_action && action != recover_squad_action && action != free_squad_action &&
-        action != extend_all_contracts_action) return false;
+        action != extend_all_contracts_action && action != remove_unhappiness_action) return false;
     bool accepted = false;
     if ((lineup_action || action_enabled(action)) && (s.memory.read<4>(control + 12) & 2)) {
         GuestCall call(s);
@@ -1352,6 +1354,7 @@ bool dispatch_best_xi_control(State& s) {
             else if (action == recover_squad_action) accepted = recover_debug_squad(s, club);
             else if (action == free_squad_action) accepted = free_debug_squad(s, club);
             else if (action == extend_all_contracts_action) accepted = extend_debug_club_contracts(s, club);
+            else if (action == remove_unhappiness_action) accepted = remove_debug_unhappiness(s, club);
             else {
                 const auto humans = std::uint32_t(s.memory.read<4>(s.memory.read<4>(s.r<4>(8) - 0x7a54)));
                 const auto formation = call.call(0x101466c0, {humans, 0});
@@ -1428,6 +1431,47 @@ bool free_debug_squad(State& s, std::uint32_t club) {
             call.call(0x10374b80, {contract, bonus});
         call.call(0x10380700, {contract, 0});
         processed = true;
+    }
+    return processed;
+}
+
+// A player's unhappiness lives in his primary contract with the club (the 0x70-byte person
+// record names no mood of its own):
+//   +0x50  review conditions: the transfer-request grievances (bigger club, pay, contract,
+//          playing time, ...), one bit each; the game's own bookkeeping is 0x1037f830;
+//   +0x48  status bits the press sets and clears; 0x800 is the "Unsettled" mark;
+//   +0x44  signed happiness, -100..100 (-50 and -100 are what the clubs' reviews write when
+//          they upset a player); +0x45 and +0x46 count his playing-time and other grievances.
+// The game resolves a concern in 0x1037f590/0x1037f6ec: it clears the grievance bits, lifts
+// happiness to at least 15 and zeroes the +0x45 run. This does the same without that routine's
+// news item or its gates. Morale (+0x4c), the transfer-list byte (+0x54), the squad status and
+// every other status bit stay as they are: they are not feelings of unhappiness.
+bool remove_debug_unhappiness(State& s, std::uint32_t club) {
+    if (!native_debugging_feature(DebugFeature::remove_unhappiness) || !club) return false;
+    const auto staff_count = signed_value<4>(s.memory.read<4>(s.memory.read<4>(s.r<4>(8) - 0x7be4)));
+    const auto employer = std::uint32_t(s.memory.read<4>(club));
+    GuestCall call(s);
+    std::vector<std::uint32_t> players;
+    bool processed = false;
+    for (unsigned i = 0; i < 50; ++i) {
+        const auto staff = std::uint32_t(s.memory.read<4>(club + 0x98 + i * 4));
+        if (!staff || !s.memory.read<4>(staff + 0x14)) continue;
+        const auto id = signed_value<4>(s.memory.read<4>(staff));
+        if (id < 0 || id >= staff_count || std::find(players.begin(), players.end(), staff) != players.end()) continue;
+        players.push_back(staff);
+        const auto contract = debug_primary_contract(s, call, staff);
+        // A player on loan elsewhere keeps his primary contract with his parent club.
+        if (!contract || s.memory.read<4>(contract + 4) != employer) continue;
+        processed = true;
+        const auto reasons = std::uint32_t(s.memory.read<4>(contract + 0x50));
+        const bool unsettled = s.memory.read<4>(contract + 0x48) & 0x800;
+        const bool upset = signed_value<1>(s.memory.read<1>(contract + 0x44)) < 0;
+        if (!reasons && !unsettled && !upset) continue;
+        if (reasons) call.call(0x1037f830, {contract, 0});   // clear all review conditions, and the person's own record of them
+        if (unsettled) call.call(0x1037fa50, {contract, 0x800}); // clear status bits
+        if (upset) s.memory.write<1>(contract + 0x44, 15);
+        s.memory.write<1>(contract + 0x45, 0);
+        s.memory.write<1>(contract + 0x46, 0);
     }
     return processed;
 }

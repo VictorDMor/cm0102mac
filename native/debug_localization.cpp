@@ -18,6 +18,13 @@ std::string_view debug_text(unsigned language, DebugText text) {
             "Gjenopprett spiller", "Recuperar Jogador", "\305terst\344ll spelare"};
         return labels[language < labels.size() ? language : 0];
     }
+    if (text == DebugText::remove_unhappiness) {
+        static constexpr std::array<std::string_view, 11> labels{
+            "Remove Unhappiness", "Remove Unhappiness", "Supprimer le m\351contentement", "Unzufriedenheit beseitigen",
+            "Rimuovi insoddisfazione", "Eliminar insatisfacci\363n", "Fjern utilfredshed", "Ontevredenheid wegnemen",
+            "Fjern misn\370ye", "Remover Insatisfa\347\365es", "Ta bort missn\366je"};
+        return labels[language < labels.size() ? language : 0];
+    }
     if (text == DebugText::club_rule_pair_hint) {
         static constexpr std::array<std::string_view, 11> labels{
             "Two listed teams: only Win vs Loss keeps the club rules.",

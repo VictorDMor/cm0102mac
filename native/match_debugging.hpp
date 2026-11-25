@@ -13,7 +13,7 @@ void initialize_native_debugging(bool enabled = false);
 void select_native_debugging(bool enabled);
 enum class DebugFeature : unsigned { recover_players, play_for_free, extend_contract, cancel_sale,
     remove_sale_clause, underdogs, underdogs_max, add_goal, repeat_goal, red_cards, injuries, extend_all_contracts,
-    match_result, force_purchase, all_draws, maximize_attributes, force_staff_signing, recover_player, count };
+    match_result, force_purchase, all_draws, maximize_attributes, force_staff_signing, recover_player, remove_unhappiness, count };
 constexpr unsigned debug_feature_count = unsigned(DebugFeature::count);
 constexpr std::uint32_t all_debug_features = (1u << debug_feature_count) - 1;
 std::uint32_t native_debugging_features();
@@ -63,6 +63,10 @@ bool recover_debug_squad(State&, std::uint32_t club);
 // with the same original operations as the squad recovery. A person with neither is
 // left untouched and the call returns false.
 bool recover_debug_player(State&, std::uint32_t staff);
+// Remove the unhappiness of every roster player who holds a primary contract with the club:
+// his transfer-request grievances (review conditions), the press's "unsettled" mark and a negative
+// happiness (see match_debugging.cpp). Returns whether any roster contract was examined.
+bool remove_debug_unhappiness(State&, std::uint32_t club);
 // Set every roster player's primary-contract wage to zero (one euro if the
 // original store refuses zero) and clear clauses, bonuses and the release amount.
 bool free_debug_squad(State&, std::uint32_t club);

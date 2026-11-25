@@ -704,6 +704,142 @@ int main(int argc, char** argv) {
 
         require(s.memory.copy_out(c.toc(-0x7b90), 0x10) == rng, "Collective renewal changed RNG");
 
+        {
+            // Remove Unhappiness: a squad action of the human's own club. Unhappiness is kept in the
+            // primary contract (+0x50 grievances, +0x48 status bits, +0x44 happiness, +0x45/+0x46 counters).
+            const auto ledger_now = c.u32(c.toc(-0x7b7c));
+            const auto contract_of = [&](std::uint32_t person) {
+                invoke(0x10082f20, {ledger_now, person});
+                return std::uint32_t(c.r(3));
+            };
+            const auto roster = [&](std::uint32_t club) {
+                std::vector<std::uint32_t> contracts;
+                for (unsigned i = 0; i < 50; ++i) {
+                    const auto person = c.u32(club + 0x98 + i * 4);
+                    if (!person || !c.u32(person + 0x14)) continue;
+                    const auto contract = contract_of(person);
+                    if (contract && c.u32(contract + 4) == c.u32(club) &&
+                        std::find(contracts.begin(), contracts.end(), contract) == contracts.end())
+                        contracts.push_back(contract);
+                }
+                return contracts;
+            };
+            const auto bytes_of = [&](const std::vector<std::uint32_t>& contracts) {
+                std::vector<std::uint8_t> all;
+                for (auto contract : contracts) {
+                    const auto row = s.memory.copy_out(contract, 0x68);
+                    all.insert(all.end(), row.begin(), row.end());
+                }
+                return all;
+            };
+            select_native_debugging_features(1u << unsigned(DebugFeature::remove_unhappiness));
+            const auto squad = roster(managed_club);
+            require(squad.size() >= 8, "Expected a managed squad with at least eight contracts");
+            std::uint32_t rival = 0;
+            for (unsigned i = 0; i < c.u32(c.toc(-0x7b50)) && !rival; ++i) {
+                const auto club = c.u32(c.toc(-0x7be8)) + i * 0x248;
+                invoke(0x1014c490, {club, 0, 1});
+                if (club != managed_club && !c.r(3) && roster(club).size() >= 3) rival = club;
+            }
+            require(rival, "Expected an AI club with contracts");
+            const auto rivals = roster(rival);
+            const auto open_squad = [&](std::uint32_t club) {
+                invoke(0x1073f1e0, {ui, 0, club, 0});
+                invoke(0x1073f1e0, {ui, 1, 0, 0});
+                invoke(0x1073f1e0, {ui, 4, 1, 0});
+            };
+            const auto remove_unhappiness = [&](std::uint32_t club, bool clicked) {
+                // The entry is only built for the human's own squad; an AI club can only be reached with a
+                // control retained from that screen.
+                open_squad(managed_club);
+                build_squad_controls();
+                const auto index = control(30035, 0);
+                require(text_of(index) == "     " + std::string(debug_text(s, DebugText::remove_unhappiness)),
+                        "Remove Unhappiness label in the squad menu");
+                c.put32(item_address(index) + 12, clicked ? 2 : 0);
+                open_squad(club);
+                c.set(3, index);
+                require(dispatch_best_xi_control(s), "Remove Unhappiness control was not claimed");
+                return std::int32_t(c.r(3));
+            };
+            const auto random_now = s.memory.copy_out(c.toc(-0x7b90), 0x10);
+            // The real squad first: it may hold unhappy players already. Running the action twice must leave
+            // the second pass without effect (a happy squad is unchanged).
+            require(remove_unhappiness(managed_club, true) == -11, "Remove Unhappiness did not request a refresh");
+            const auto settled = bytes_of(squad);
+            for (auto contract : squad) {
+                require(c.u32(contract + 0x50) == 0 && !(c.u32(contract + 0x48) & 0x800) &&
+                        std::int8_t(c.u8(contract + 0x44)) >= 0, "Squad still holds unhappiness after the action");
+            }
+            require(remove_unhappiness(managed_club, true) == -11 && bytes_of(squad) == settled,
+                    "A happy squad was changed");
+            // Plant each kind of unhappiness in different players, with neighbours that must not move.
+            const auto plant = [&](std::uint32_t contract, std::uint32_t reasons, std::uint32_t status, int happiness,
+                                   int run, int grievances) {
+                c.put32(contract + 0x50, reasons); c.put32(contract + 0x48, status);
+                c.put8(contract + 0x44, std::uint32_t(happiness)); c.put8(contract + 0x45, run); c.put8(contract + 0x46, grievances);
+            };
+            // Players 0..4 are unhappy in one or more ways; 5 and 6 carry other state that is not unhappiness.
+            c.put8(squad[0] + 0x4c, 0x13); c.put8(squad[0] + 0x54, 1);
+            plant(squad[0], 0x00000105, 0x880, -50, 7, 2);        // grievances, unsettled plus another mark
+            plant(squad[1], 0, 0, -100, 0, 0);                    // only a very low happiness
+            plant(squad[2], 0, 0x800, 30, 0, 0);                  // only the unsettled mark
+            plant(squad[3], 0x20000000, 0, 40, 3, 1);            // grievance with a good happiness
+            plant(squad[4], 0, 0x40080, 5, 4, 0);                 // not unhappy: a press mark and a low but positive happiness
+            plant(squad[5], 0, 0, 0, 0, 0);                       // happiness 0 is not negative
+            c.put8(squad[6] + 0x4c, 0xf0); c.put8(squad[6] + 0x54, 1); c.put8(squad[6] + 0x60, 0x23);
+            const auto rival_before = [&] {
+                plant(rivals[0], 0x00000105, 0x800, -50, 7, 2);
+                plant(rivals[1], 0, 0x800, -100, 0, 0);
+                return bytes_of(rivals);
+            }();
+            const auto before = bytes_of(squad);
+            const auto rows = [&](unsigned n) { return s.memory.copy_out(squad[n], 0x68); };
+            const auto first_before = rows(0), fifth_before = rows(4), sixth_before = rows(5), seventh_before = rows(6);
+            // Not clicked: the control is only a hover.
+            require(remove_unhappiness(managed_club, false) == 0 && bytes_of(squad) == before, "Unclicked action changed the squad");
+            // An AI club is refused (its squad is shown, the action is not offered for it).
+            require(remove_unhappiness(rival, true) == 0 && bytes_of(rivals) == rival_before && bytes_of(squad) == before,
+                    "An AI club's squad was accepted");
+            require(remove_unhappiness(managed_club, true) == -11, "Remove Unhappiness was refused for the human's squad");
+            require(c.u32(squad[0] + 0x50) == 0 && c.u32(squad[0] + 0x48) == 0x80 && c.i8(squad[0] + 0x44) == 15 &&
+                    c.u8(squad[0] + 0x45) == 0 && c.u8(squad[0] + 0x46) == 0 && c.u8(squad[0] + 0x4c) == 0x13 &&
+                    c.u8(squad[0] + 0x54) == 1, "Grievances, unsettled mark, happiness and counters were not cleared as defined");
+            require(c.i8(squad[1] + 0x44) == 15, "A very unhappy player was not lifted to the game's resolved level");
+            require(c.u32(squad[2] + 0x48) == 0 && c.i8(squad[2] + 0x44) == 30, "Unsettled mark removal changed happiness");
+            require(c.u32(squad[3] + 0x50) == 0 && c.i8(squad[3] + 0x44) == 40 && c.u8(squad[3] + 0x45) == 0 &&
+                    c.u8(squad[3] + 0x46) == 0, "A grievance with good happiness was mishandled");
+            require(rows(4) == fifth_before && rows(5) == sixth_before && rows(6) == seventh_before,
+                    "A player without unhappiness was changed");
+            for (unsigned n = 7; n < squad.size(); ++n) {
+                const auto position = n * 0x68;
+                require(std::equal(before.begin() + position, before.begin() + position + 0x68,
+                                   bytes_of(squad).begin() + position), "A happy neighbour was changed");
+            }
+            require(bytes_of(rivals) == rival_before, "Another club's contracts were touched");
+            require(s.memory.copy_out(c.toc(-0x7b90), 0x10) == random_now, "Remove Unhappiness changed RNG");
+            // The original grievance bookkeeping: the same routine the game uses on a reset leaves its own store clean.
+            require(first_before != rows(0), "The unhappy player did not change");
+            // Switch off: the entry disappears and a stale control does nothing.
+            plant(squad[1], 0x4, 0x800, -20, 3, 1);
+            select_native_debugging_features(0);
+            build_squad_controls();
+            for (unsigned i = 0; i < c.u16(page() + 0x129da6); ++i)
+                require(c.u32(item_address(i) + 8) != 30035, "Remove Unhappiness stayed visible with its switch off");
+            const auto switched_off = bytes_of(squad);
+            require(!remove_debug_unhappiness(s, managed_club) && bytes_of(squad) == switched_off,
+                    "Disabled Remove Unhappiness changed the squad");
+            select_native_debugging_features(1u << unsigned(DebugFeature::remove_unhappiness));
+            require(!remove_debug_unhappiness(s, 0), "A missing club was accepted");
+            for (unsigned language = 0; language < 11; ++language)
+                require(!debug_text(language, DebugText::remove_unhappiness).empty(), "Missing Remove Unhappiness label");
+            require(debug_text(9, DebugText::remove_unhappiness) == "Remover Insatisfa\347\365es" &&
+                    debug_text(0, DebugText::remove_unhappiness) == "Remove Unhappiness" &&
+                    debug_text(255, DebugText::remove_unhappiness) == "Remove Unhappiness", "Remove Unhappiness labels");
+            open_squad(managed_club);
+            select_native_debugging_features(0);
+        }
+
         // Exercise the original proposal callbacks and transfer ledger on the
         // fixture. Advance the offer directly through its scheduled decisions.
         select_native_debugging_features(1u << unsigned(DebugFeature::force_purchase));
