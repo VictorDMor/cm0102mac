@@ -20,6 +20,8 @@
 #include "quick_save_runtime.hpp"
 #include "guest_context_transfer.hpp"
 #include "match_debugging.hpp"
+#include "match_speed.hpp"
+#include "turbo_presentation.hpp"
 #include "debug_match_results.hpp"
 #include "resource_bridge.hpp"
 #include "filesystem_bridge.hpp"
@@ -753,8 +755,43 @@ struct NativePlatform::Impl {
         window_ports.emplace(window, token);
         return token;
     }
+    // Whether the game window shows the match screen (handler 0x1028dc80) while the speed is
+    // Turbo; see turbo_presentation.hpp.
+    bool turbo_match_screen() const {
+        return native_match_speed_enabled() && native_match_speed() == turbo_match_speed && commands.ready &&
+               commands.handler == 0x1028dc80;
+    }
+    TurboPresentation turbo_presentation;
+    std::uint32_t pending_present = 0;  // the token of the port whose frame is deferred
     void present(State& s, const Port& port) {
         if (!port.window) return;
+        std::uint32_t token = 0;
+        for (const auto& [key, item] : ports) if (&item == &port) token = key;
+        if (!token) return present_now(s, port);  // not a registered port: nothing to defer by
+        if (pending_present && pending_present != token) flush_pending_present(s, true);
+        if (!turbo_presentation.request(std::chrono::steady_clock::now(), turbo_match_screen())) {
+            pending_present = token;
+            return;
+        }
+        pending_present = 0;
+        present_now(s, port);
+    }
+    // Presents the deferred frame when it is due (see TurboPresentation::due).
+    void flush_pending_present(State& s, bool force) {
+        if (!pending_present) return;
+        const auto now = std::chrono::steady_clock::now();
+        const auto found = ports.find(pending_present);
+        if (found == ports.end() || !found->second.window || !windows.contains(found->second.window)) {
+            pending_present = 0;
+            turbo_presentation.discard();
+            return;
+        }
+        if (!turbo_presentation.due(now, turbo_match_screen(), force)) return;
+        pending_present = 0;
+        turbo_presentation.presented(now);
+        present_now(s, found->second);
+    }
+    void present_now(State& s, const Port& port) {
         CM_PROFILE_ZONE("Presentation snapshot and submit");
         CM_PROFILE_VALUE(port.window);
         const auto width = std::int32_t(port.bounds[3]) - port.bounds[1];
@@ -949,7 +986,10 @@ struct NativePlatform::Impl {
             if (poll_start - heavy_at < std::chrono::milliseconds(500)) quiet_since = poll_start;
             heavy_at = poll_start;
         }
-        const bool quiet = commands.ready && poll_start - quiet_since > std::chrono::milliseconds(250);
+        // A Turbo match that is drawing is working, not idle: the loop does not wait for input.
+        const bool quiet = commands.ready && poll_start - quiet_since > std::chrono::milliseconds(250) &&
+                           !turbo_presentation.animating(poll_start, turbo_match_screen());
+        flush_pending_present(s, false);
         if (commands.ready) {
             if (commands.handler == 0x100ee9d0) command_status = "Original file dialog: awaiting interaction";
             else if (commands.handler == 0x1033f840) command_status = "Original options: awaiting interaction";
@@ -1005,6 +1045,7 @@ struct NativePlatform::Impl {
             UIEvent event{UIEvent::Kind::update};
             // The original busy loops call WaitNextEvent with no sleep, thousands
             // of times a second while they work: throttle those AppKit pumps.
+            if (timeout > 0) flush_pending_present(s, true);  // never wait with a frame withheld
             auto available = user_interface().poll(event, timeout, sleep == 0);
             std::optional<AutomationRequest> request;
             if (!available && automation) {
@@ -1013,6 +1054,7 @@ struct NativePlatform::Impl {
                 if (!request && (commands.ready || automation->dirty())) automation->boundary(s, commands, command_status);
             }
             if (request) {
+                flush_pending_present(s, true);  // an observer sees the latest frame
                 using Kind = AutomationRequest::Kind;
                 if (request->input()) commands = original_command_context(s, mask);
                 if (request->kind == Kind::command) {

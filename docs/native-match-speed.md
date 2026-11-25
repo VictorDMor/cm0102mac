@@ -41,6 +41,21 @@ cadence. Its commentary wait is capped at 20 ms. Original game clocks, sound
 completion, match calculations, halftime and user pauses remain in effect.
 Selecting an original speed retains its original commentary duration.
 
+Turbo's wall time was not the commentary wait. Measured in a driven game (first half of
+the day-201 friendly of the Arsenal save, 45 minutes), the game thread spent more than
+half the time in the event loop's waits and about a quarter drawing and presenting. The
+original redraws the game window after every commentary line, and each presentation
+copies the whole window and waits for the main thread. While Turbo's match screen (handler
+`0x1028dc80`) runs, the host therefore presents at most one frame per 40 ms and defers the
+others (a deferred frame is presented when due, before the game waits, when the screen
+changes, and before an automation request; it is a snapshot of the whole window, so a
+later frame covers it), and the event loop's quiet-screen wait (8 ms per turn) is skipped
+while frames were requested in the last 100 ms (`native/turbo_presentation.hpp`,
+`platform.cpp`). The game still draws into its own pixels exactly as before; the five
+original speeds, a paused match and the screens around it keep the old pacing. Measured
+and not kept: capping the commentary wait at 0 instead of 20 ms (no difference), and
+reusing pointer readings for 20 ms instead of 4 ms (no difference).
+
 The native UI also enables the existing audited runtime shortcuts by default,
 independently of presentation speed. Headless reference checks retain their
 explicit runtime-policy toggle.

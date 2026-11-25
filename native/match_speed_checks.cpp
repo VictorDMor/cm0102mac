@@ -2,6 +2,7 @@
 #include "match_presentation.hpp"
 #include "semantic_io_checks.hpp"
 #include "human_manager_adapter.hpp"
+#include "turbo_presentation.hpp"
 #include <array>
 #include <utility>
 
@@ -190,8 +191,33 @@ int main() {
             require(getter_declined && !native_match_speed_through_human_manager(s, 0x10147d20) &&
                     native_match_speed() == 90 && s.r<4>(16) == 55, "Declined accessor changed the preference or a register");
         }
+        // Turbo's presentation pacing: frames are deferred only on Turbo's match screen, a
+        // deferred frame falls due, and the game counts as animating only while it draws.
+        {
+            using ms = std::chrono::milliseconds;
+            const auto t0 = TurboPresentation::Clock::now();
+            TurboPresentation off;
+            for (unsigned i = 0; i < 5; ++i)
+                require(off.request(t0 + ms(i), false) && !off.deferred() && !off.animating(t0 + ms(i), false),
+                        "A frame off Turbo's match screen was deferred");
+            TurboPresentation turbo;
+            require(turbo.request(t0, true), "The first Turbo frame was deferred");
+            require(!turbo.request(t0 + ms(10), true) && turbo.deferred(), "A Turbo frame inside the interval was presented");
+            require(!turbo.due(t0 + ms(20), true, false) && turbo.due(t0 + ms(40), true, false),
+                    "A deferred frame is due at the wrong time");
+            require(turbo.due(t0 + ms(11), true, true) && turbo.due(t0 + ms(11), false, false),
+                    "A deferred frame is not due before a wait or after leaving the screen");
+            turbo.presented(t0 + ms(40));
+            require(!turbo.deferred() && !turbo.due(t0 + ms(41), true, true), "A presented frame is still deferred");
+            require(turbo.animating(t0 + ms(99), true) && !turbo.animating(t0 + ms(111), true) && !turbo.animating(t0 + ms(99), false),
+                    "Animation window is wrong");
+            require(turbo.request(t0 + ms(80), false) && !turbo.deferred(), "Leaving the Turbo screen did not present at once");
+            require(!turbo.request(t0 + ms(85), true) && turbo.deferred(), "A frame after a presentation was not deferred");
+            turbo.discard();
+            require(!turbo.deferred() && !turbo.due(t0 + ms(200), true, true), "A discarded frame is still due");
+        }
         std::cout << "PASS: six native choices, Turbo default, original generated getter/setter, record kept original, "
-                     "constructor, cadence, presentation isolation, fault-safe preference and one marked menu entry through the rewritten accessors\n";
+                     "constructor, cadence, presentation isolation, fault-safe preference, one marked menu entry through the rewritten accessors and Turbo presentation pacing\n";
     } catch (const std::exception& e) {
         std::cerr << e.what() << '\n';
         return 1;
