@@ -16,4 +16,7 @@ HOLIDAY_RETURN_HOOKS = {
     0x102a63c8: ("bl 0x10746a30", "holiday_return::started(s);"),
     # GAME's per-time-slot routine: the holiday ends on its date.
     0x1011b330: ("mfspr r0,LR", "holiday_return::slot(s);"),
+    # In that routine, after it asked whether the manager (r24) has news: the one who just came back gets the screen.
+    0x1011b540: ("extsb. r0,r3", "holiday_return::stop_for(s);"),
+    0x1011b574: ("bl 0x102ce710", "holiday_return::stop_screen(s);"),
 }

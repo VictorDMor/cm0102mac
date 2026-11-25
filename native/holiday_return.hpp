@@ -46,5 +46,12 @@ bool link(State&);         // the handler at its dispatch of a setting; true whe
 void cancelled(State&);    // the dialog's No: the choice is dropped
 void started(State&);      // the menu bar after Yes put the manager away: binds the choice to that manager
 void slot(State&);         // each time slot: ends the holiday on its date
+// In that routine, where it has asked whether a manager has news (0x1011b540): a manager whose holiday the date
+// ended this slot is treated as having some, so the routine gives him the screen that day.
+void stop_for(State&);
+// Where it then opens that manager's news (0x1011b574): the screen that waits for him, not the one that goes on.
+void stop_screen(State&);
+// How many times stop_screen gave a returning manager the waiting screen (for the check).
+std::uint64_t screens_given();
 }
 }

@@ -162,8 +162,8 @@ inline void holiday_return_scene(const char* path) {
     t.invoke(0x1011b330, {scratch});
     require(c.u8(away_byte) == 1 && rules.holiday_return(c.u32(staff)).has_value(), "the entry of GAME's routine ended the holiday before its date");
     set_today(chosen);
-    t.invoke(0x1011b330, {scratch});
-    require(c.u8(away_byte) == 0 && !rules.holiday_return(c.u32(staff)), "the entry of GAME's routine did not end the holiday on its date");
+    holiday_return::slot(t.s);
+    require(c.u8(away_byte) == 0 && !rules.holiday_return(c.u32(staff)), "the slot did not end the holiday on its date");
     // With no date the slot does nothing at all, away or not.
     t.invoke(0x10147fd0, {humans, 1, 0});
     {
@@ -215,4 +215,31 @@ inline void holiday_return_scene(const char* path) {
     require(!holiday_return::available(t.s), "an opaque member offers no dates");
     t.rebuild(canvas);
     require(control_of(holiday_return::link_day) < 0 && control_of(0) >= 0, "no host rows without a member that can keep a date");
+    // Last, because it leaves the manager's news screen open in place of the dialog: the date reached through
+    // GAME's own routine.
+    rules.reset();
+    require(holiday_return::available(t.s), "a fresh member keeps dates again");
+    t.invoke(0x10147fd0, {humans, 1, 0});
+    rules.set_holiday_return(c.u32(staff), chosen);
+    set_today(chosen);
+    // On the date the routine also hands the manager his screen, news or not: it opens his news as the screen
+    // that waits (0x102ce710 with r4 = 0) and enters the screen manager's loop (0x1073c730), which the check
+    // answers by returning at once.
+    {
+        static bool waited;
+        waited = false;
+        const auto given = holiday_return::screens_given();
+        if (dispatch_probe) throw std::runtime_error("the holiday check needs the dispatcher's probe");
+        struct Probe { ~Probe() { dispatch_probe = nullptr; } } probe;
+        dispatch_probe = [](State& s) {
+            if (s.pc != 0x1073c730) return false;
+            waited = true;
+            s.pc = std::uint32_t(s.r<4>(4128));
+            return true;
+        };
+        t.invoke(0x1011b330, {scratch});
+        // (The news screen's owner is called in place, past the probe: the host's own count says it was asked for.)
+        require(holiday_return::screens_given() == given + 1 && waited, "the manager did not get the screen on the day his holiday ended");
+    }
+    require(c.u8(away_byte) == 0 && !rules.holiday_return(c.u32(staff)), "the entry of GAME's routine did not end the holiday on its date");
 }

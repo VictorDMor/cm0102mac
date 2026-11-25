@@ -4,6 +4,7 @@
 #include "gui_guest_scope.hpp"
 #include "human_manager_detail.hpp"
 #include "platform.hpp"
+#include <algorithm>
 #include <array>
 #include <string>
 #include <vector>
@@ -197,7 +198,33 @@ void started(State& s) {
     career->set_holiday_return(c.u32(staff), pending && before(today(s), *pending) ? pending : std::nullopt);
 }
 
+namespace {
+// Managers whose holiday the date ended at the entry of this pass of GAME's routine and who have not been given
+// the screen yet (game thread only). The routine still applies its own tests after stop_for (not away, and the
+// word at display+0x260000-0x7e54 clear): where they refuse, he gets no screen in this pass, as any manager.
+std::vector<std::uint32_t> returning;
+std::uint64_t given = 0;
+}
+void stop_for(State& s) {
+    // At 0x1011b540, r24 is the manager the routine is asking about and r3 whether he has news to read.
+    const auto manager = std::uint32_t(s.r<4>(24 * 4));
+    if (std::find(returning.begin(), returning.end(), manager) != returning.end()) s.wr<4>(3 * 4, 1);
+}
+void stop_screen(State& s) {
+    // At 0x1011b574 the routine opens the manager's news (r3) asking it to go on by itself when nothing needs
+    // reading (r4 = 1). The manager who just came back gets the plain screen instead, which waits for him.
+    const auto found = std::find(returning.begin(), returning.end(), std::uint32_t(s.r<4>(3 * 4)));
+    if (found == returning.end()) return;
+    returning.erase(found);
+    s.wr<4>(4 * 4, 0);
+    ++given;
+}
+std::uint64_t screens_given() { return given; }
+
 void slot(State& s) {
+    // An entry lives for one pass of the routine only: one it did not use (the routine took its other branch,
+    // or its own tests kept the screen from the manager) must not change a later pass, a later day or another career.
+    returning.clear();
     auto* career = rules(s);
     if (!career || career->holiday_returns().empty()) return;
     guest::Cpu c(s);
@@ -228,6 +255,9 @@ void slot(State& s) {
             c.set({{3, humans}, {4, 0}, {5, staff}});
             c.call(set_away, return_sentinel);
         }
+        // The routine below hands the screen to a manager only when he has news: this one gets it now, on the
+        // day he chose, news or not (stop_for).
+        if (c.u8(human_manager::record_at(c, humans, *index) + human_manager::record::away) == 0) returning.push_back(staff);
         career->set_holiday_return(entry.staff, std::nullopt);
     }
 }
