@@ -477,6 +477,17 @@ int replay_main(int argc, char** argv) {
                 if (match_sharing) season_replay_relax_import_inputs();
             }
             std::optional<StackAudit> audit;
+            // A capture whose last screen does not replay ends in an exception: the listing made up to there is
+            // printed on the way out all the same (as the sharing report is), marked as partial.
+            bool audit_reported = false;
+            struct AuditOnExit {
+                std::optional<StackAudit>& audit; bool& reported; bool& all;
+                ~AuditOnExit() {
+                    if (!audit || reported) return;
+                    try { std::cerr << "stack audit of a replay that did not reach its end:\n"; audit->report(std::cerr, all); }
+                    catch (const std::exception& failure) { std::cerr << "stack audit report failed: " << failure.what() << '\n'; }
+                }
+            } audit_on_exit{audit, audit_reported, stack_audit_all};
             if (stack_audit) {
                 if (scramble) audit.emplace(*state, *scramble); else audit.emplace(*state);
                 state->memory.date_observer = audit->observer();
@@ -571,7 +582,7 @@ int replay_main(int argc, char** argv) {
             if (phases) { phases->report(std::cerr); phases.reset(); }
             if (transcript) { require_season_replay_eof(); close_season_replay(); }
             state->memory.observer = nullptr;
-            if (audit) { state->memory.date_observer = nullptr; audit->report(std::cerr, stack_audit_all); }
+            if (audit) { state->memory.date_observer = nullptr; audit->report(std::cerr, stack_audit_all); audit_reported = true; }
             // The flipped byte itself is excluded; only its effects on the run count.
             if (flip) state->memory.write<1>(*flip, expected->memory.read<1>(*flip));
             if (scramble) {
