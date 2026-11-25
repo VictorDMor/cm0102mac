@@ -1,3 +1,5 @@
+#include "guest_scratch.hpp"
+#include <mutex>
 #include "transfer_manager_native_status.hpp"
 #include "transfer_manager_native_detail.hpp"
 #include "guest_fpu.hpp"
@@ -132,6 +134,13 @@ std::uint32_t person_refused(Cpu& c, std::uint32_t manager, std::uint32_t person
         return 1;
 
     // The person's level in the row's history: it moves up the history by the gap since the row's last level.
+    // The row is caught up by whoever asks first. When the shortlist scan's judging runs on workers
+    // (shortlist_manager_candidates_parallel.cpp) two of them may ask about one row at once: one at a time, so the
+    // history is shifted once (the second finds no gap), and held to the routine's end, since the history is
+    // read again below.
+    static std::mutex catching_up;
+    std::unique_lock<std::mutex> turn(catching_up, std::defer_lock);
+    if (play_context(c.s)) turn.lock();
     const auto level = c.i16(c.u32(c.u32(rating_table) + 4) + c.u32(c.u32(person + person_club) + 0x68) * 0x74 + 2);
     const auto gap = std::int16_t(std::int32_t(level) - std::int32_t(c.i16(history_row() + row_level)));
     if (gap > 0) {

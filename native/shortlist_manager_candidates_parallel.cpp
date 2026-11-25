@@ -1,6 +1,7 @@
 #include "shortlist_manager_candidates_scan.hpp"
 #include "guest_scratch.hpp"
 #include "guest_worker_pool.hpp"
+#include "match_day_driver.hpp"
 #include "match_play.hpp"
 #include "shortlist_manager_adapter.hpp"
 
@@ -9,14 +10,24 @@
 #include <cstdlib>
 #include <exception>
 
-// Experimental (CM_SHORTLIST_PARALLEL=1; TASKS.md, "The shortlist manager's 37%"): the eligibility of a scan's
-// list entries judged on guest workers. A worker has the matches' private context (stack, scratch heap, TOC copy
+// The eligibility of a scan's list entries judged on guest workers (TASKS.md, "The shortlist manager's 37%"):
+// experimental, see enabled(). A worker has the matches' private context (stack, scratch heap, TOC copy
 // with its own RNG words and scratch statics) and a copy of the scan's frame and registers as the walk finds
-// them; each entry is judged with its own RNG stream. Not for production yet: the lists' embedded cursors and
-// any other shared word a judging writes are not kept apart.
+// them; each entry is judged with its own RNG stream. What judging writes outside that context was measured on
+// the reference week and live on the multi-league career: the transfer manager's catch-up of a row's history
+// (one worker at a time there) and the cursors embedded in shared lists, which are not kept apart: two workers
+// stepping one list at once can make a verdict wrong, never a pointer (a cursor holds a node or null, and every
+// reader resets it before use).
 namespace cm::aot::shortlist_manager::candidates {
 namespace {
-const bool enabled = [] { const char* value = std::getenv("CM_SHORTLIST_PARALLEL"); return value && *value == '1'; }();
+// CM_SHORTLIST_PARALLEL=1 turns it on, and only together with the game's Parallel Matches setting (the day
+// driver's parallel order), so replays, checkers and a session that records a capture never use it. Whether the
+// setting alone should turn it on is Victor's to say (TASKS.md): the cursors' limit below makes results vary
+// from run to run.
+bool enabled() {
+    static const bool asked = [] { const char* value = std::getenv("CM_SHORTLIST_PARALLEL"); return value && value[0] == '1' && !value[1]; }();
+    return asked && match_day_order() == MatchDayOrder::parallel;
+}
 constexpr std::size_t fewest = 256;                    // below this a scan is judged in place
 constexpr std::uint32_t frame_size = 0x1b0;
 // What a worker's copy of the frame takes from the game thread's: the scan's locals (not the register saves and
@@ -49,7 +60,7 @@ void Scan::restore(const Verdict& verdict) {
 bool Scan::judge_on_workers() {
     verdicts.clear(); judged_entries.clear(); next_verdict = 0;
     // Not under a diagnostic that watches the judging or the memory (they follow one thread).
-    if (!enabled || play_context(c.s) || shortlist_candidate_hook || c.s.memory.date_observer || c.s.memory.read_trace) return false;
+    if (!enabled() || play_context(c.s) || shortlist_candidate_hook || c.s.memory.date_observer || c.s.memory.read_trace) return false;
     // The entries in the walk's order (Scan::walk, read only).
     for (std::int32_t category = std::int8_t(c.u8(at(local::category))), offset = c.i32(at(local::category_offset));
          category <= c.i32(at(local::last_category)); ++category, offset += 4) {

@@ -1,5 +1,7 @@
 #include "parallel_matches.hpp"
 #include "match_sharing.hpp"
+#include "club_sharing.hpp"
+#include "shortlist_manager_adapter.hpp"
 #include "routine_check.hpp"
 #include "platform.hpp"
 #include "adaptive_gui.hpp"
@@ -215,6 +217,33 @@ struct NativePlatform::Impl {
                 // What background matches share (match_sharing.hpp): observes from here to the stop request.
                 static std::unique_ptr<MatchSharing> sharing;
                 static MatchSharing* active = nullptr;
+                // With CM_SHARING_CLUBS set the same requests run the clubs' diagnostic instead (club_sharing.hpp).
+                static std::unique_ptr<ClubSharing> clubs;
+                static ClubSharing* active_clubs = nullptr;
+                static const bool clubs_asked = std::getenv("CM_SHARING_CLUBS") != nullptr;   // one answer for start and stop
+                if (clubs_asked) {
+                    if (request.name.empty()) {
+                        if (clubs || s.memory.date_observer || dispatch_probe || shortlist_candidate_hook) throw std::runtime_error("an observer is already installed");
+                        clubs = std::make_unique<ClubSharing>(s);
+                        active_clubs = clubs.get();
+                        s.memory.date_observer = clubs->observer();
+                        dispatch_probe = [](State& state) { active_clubs->probe(state); return false; };
+                        shortlist_candidate_hook = [](State&, int phase) { active_clubs->candidate(phase); };
+                        result = "observing clubs";
+                    } else if (!clubs) throw std::runtime_error("not observing");
+                    else {
+                        dispatch_probe = nullptr;
+                        shortlist_candidate_hook = nullptr;
+                        s.memory.date_observer = nullptr;
+                        const auto path = automation->output("sharing", request.name + ".txt");
+                        std::filesystem::create_directories(path.parent_path());
+                        std::ofstream out(path);
+                        const auto finished = std::move(clubs);   // gone whatever the report does
+                        active_clubs = nullptr;
+                        finished->report(out);
+                        result = path.string();
+                    }
+                } else
                 if (request.name.empty()) {
                     if (sharing || s.memory.date_observer || dispatch_probe) throw std::runtime_error("an observer is already installed");
                     sharing = std::make_unique<MatchSharing>(s);
