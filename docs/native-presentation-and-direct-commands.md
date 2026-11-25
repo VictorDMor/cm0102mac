@@ -57,14 +57,29 @@ confirmation says, an unsaved career is not kept.
 
 The Manager menu's Go on holiday dialog (builder `0x101c9eb0`) has an optional return date
 (`native/holiday_return.cpp`, hooks in `tools/holiday_return_audit.py`). Two rows after the
-original's seven: the date (a link, +1 day per click, tomorrow first) and the shortcuts None, +1
-week, +2 weeks, +1 month. They are action-3 links with the values 7 to 11 in the control's +0x48,
-which the original handler ignores, so the host takes them first. Yes binds the date to the
-manager as a `holiday_return <day> <year> <staff id>` line of the career's `native_rules.tmp`;
-GAME's per-slot routine (`0x1011b330`) ends the holiday on that date through the original's own
-way back, `set_away(humans, 0, manager)`, and drops the line when the manager is no longer away
-(any other way back first). With no date nothing differs from the original. There is no "end of
-season" shortcut: the game keeps no single end date, each league ends on its own.
+original's seven: the date (a link, +1 day per click, tomorrow first) followed by a Calendar link, and
+the shortcuts None, +1 week, +2 weeks, +1 month, End of season. They are action-3 links with the values
+7 to 13 in the control's +0x48, which the original handler ignores, so the host takes them first (the
+value is read as a signed byte, so host values stay below 128; a text line holds five links). Yes binds
+the date to the manager as a `holiday_return <day> <year> <staff id>` line of the career's
+`native_rules.tmp`; GAME's per-slot routine (`0x1011b330`) ends the holiday on that date through the
+original's own way back, `set_away(humans, 0, manager)`, and drops the line when the manager is no longer
+away (any other way back first). With no date nothing differs from the original. End of season is the
+next 30 June after today for a manager whose nation's season goes across two years, the next 29 December
+for one whose season is within a calendar year (Brazil, the Nordic nations): the manager's club's nation
+is looked up in the game's 34 nation calendars (TOC `-0x7b44`, record +0x2c start day, +0x3c end day); a
+season that ends before it starts goes through the new year. A manager with no club, or a nation not in
+the table, gets 30 June. (One row of the table, start day 81 and end day 5, reads as two-year; which
+nation it is was not identified.)
+
+The Calendar link turns the same screen into a month calendar (the builder hooks at the intro text, the
+list grid's creation and the first settings row, and the handler's No/Yes/links): a grid of seven columns
+by eight rows made with the game's own cells (navigation `<<` `<` title `>` `>>`, the weekday names, six
+weeks), the days after today as links, the chosen one framed, and a footer of None, Cancel and OK. A day
+only sets a draft; OK commits it to the dialog's choice, Cancel (or the handler's No) leaves the choice as
+it was, and the seven settings are untouched either way. The month title and weekday names come from the
+date unit's own short-name routines, so they follow the game's language. The layout (`holiday_layout.cpp`)
+treats the list as a grid of seven equal columns and the footer as three equal buttons.
 
 Command-S takes precedence over the original sound toggle and requests a save to
 the full path of the most recently completed career load or save. A failed save

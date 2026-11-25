@@ -8,8 +8,15 @@ HOLIDAY_RETURN_HOOKS = {
     0x101c9e70: ("mfspr r0,LR", "holiday_return::opened(s);"),
     # The builder, after the last setting's row and before the footer: the date row and the shortcuts.
     0x101ca5e4: ("li r4,0x64", "holiday_return::append_rows(s);"),
-    # The handler's No (action 1): the choice is dropped.
-    0x101ca754: ("addis r4,r5,0x26", "holiday_return::cancelled(s);"),
+    # The handler's No (action 1): the choice is dropped; in calendar mode it only leaves the calendar.
+    0x101ca754: ("addis r4,r5,0x26", "if (holiday_return::cancelled(s)) goto i_101caa68;"),
+    # The handler's Yes (action 2): in calendar mode it only confirms the calendar's draft.
+    0x101ca7b4: ("addis r5,r5,0x26", "if (holiday_return::confirmed(s)) goto i_101caa68;"),
+    # The builder in calendar mode: the intro paragraph (before its text box), the list grid's shape (before its
+    # creation), and the list's rows and the footer, which the host builds in place of the settings and Yes/No.
+    0x101ca028: ("bl 0x10744390", "holiday_return::intro(s);"),
+    0x101ca080: ("bl 0x107198c0", "holiday_return::list_shape(s);"),
+    0x101ca088: ("or r25,r3,r3", "if (holiday_return::build_calendar(s)) goto i_101ca6b8;"),
     # The handler's dispatch of a setting by the control's value (r0): values 7..11 are the host's rows.
     0x101ca884: ("cmplwi r0,0x6", "if (holiday_return::link(s)) goto i_101caa68;"),
     # The menu bar, after Yes put the manager away (set_away(humans, 1, 0)), before the start tick is stored.

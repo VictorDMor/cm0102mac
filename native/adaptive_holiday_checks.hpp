@@ -3,17 +3,18 @@
 // so its measured width changes). Built with New Screens off and on at six canvases; the adaptive run keeps
 // every control, command, record and RNG draw and only moves them: a panel centered under the title bars and
 // at most 800 wide, the settings carried with its left edge, and two equal 190px buttons right-aligned under
-// it. Mutants of each geometric promise must be refused by the same checker. Needs TransferScene
+// it. Mutants of each geometric promise must be refused by the same checker. The calendar mode of the return date
+// (holiday_return.hpp) is a sixth state: a list of seven columns and eight rows and three equal buttons. Needs TransferScene
 // (adaptive_transfer_status_checks.hpp) and require_rejected (adaptive_paged_checks.hpp).
-struct HolidayShape { int panel = -1, list = -1, footer = -1; };
+struct HolidayShape { int panel = -1, list = -1, footer = -1; bool calendar = false; };
 
 inline HolidayShape holiday_shape(TransferScene& t) {
     HolidayShape r;
     for (unsigned i = 0; i < t.grids(); ++i) {
         const auto box = t.rect(t.grid(i)); const auto columns = t.c.u8(t.grid(i) + 0xbb0), rows = t.c.u8(t.grid(i) + 0xbb1);
         if (box == ScreenRect{110, 145, 780, 535} && columns == 1 && rows == 1) r.panel = int(i);
-        else if (box == ScreenRect{130, 250, 760, 535} && columns == 1) r.list = int(i);
-        else if (box == ScreenRect{100, 555, 790, 590} && columns == 2 && rows == 1) r.footer = int(i);
+        else if (box == ScreenRect{130, 250, 760, 535} && (columns == 1 || columns == 7)) { r.list = int(i); r.calendar = columns == 7; }
+        else if (box == ScreenRect{100, 555, 790, 590} && (columns == 2 || columns == 3) && rows == 1) r.footer = int(i);
     }
     return r;
 }
@@ -34,22 +35,38 @@ inline void verify_holiday(TransferScene& t, GuiCanvas size, const HolidayShape&
             (name + ": panel is not centered at its classic height").c_str());
     require(panel.right <= size.width - 10 && std::abs((panel.left + panel.right) - (shell.title().left + shell.title().right)) <= 2,
             (name + ": panel not centered under the title bars").c_str());
-    require(list == ScreenRect{panel.left + 20, 250, panel.right - 20, 535} && c.u8(t.grid(shape.list) + 0xbb1) == 13 && c.u8(t.grid(shape.list) + 0xbef) == 0,
+    require(list == ScreenRect{panel.left + 20, 250, panel.right - 20, 535} && c.u8(t.grid(shape.list) + 0xbb1) == (shape.calendar ? 8 : 13) && c.u8(t.grid(shape.list) + 0xbef) == 0,
             (name + ": settings list not inside the panel").c_str());
     // Buttons: two equal cells under the panel, right-aligned to it, inside the canvas.
     require(footer.right == panel.right && footer.top == panel.bottom + 10 && footer.bottom == footer.top + 35 && footer.bottom <= size.height - 10 &&
-            footer.width() == std::min(panel.width(), 380), (name + ": footer not compact under the panel").c_str());
+            footer.width() == std::min(panel.width(), (shape.calendar ? 3 : 2) * 190), (name + ": footer not compact under the panel").c_str());
     std::vector<ScreenRect> buttons;
     for (unsigned i = 0; i < t.controls(); ++i) {
         const auto at = t.control(i);
         if (c.i16(at + 0x72) == shape.footer) buttons.push_back(t.rect(at + 0x10));
     }
-    require(buttons.size() == 2, (name + ": footer lost a button").c_str());
+    require(buttons.size() == (shape.calendar ? 3u : 2u), (name + ": footer lost a button").c_str());
     for (const auto& b : buttons)
         require(b.left >= footer.left && b.right <= footer.right && b.top == footer.top && b.bottom == footer.bottom && b.width() >= 100,
                 (name + ": footer button outside its footer").c_str());
-    require(std::abs(buttons[0].width() - buttons[1].width()) <= 1 && buttons[0].right <= buttons[1].left &&
-            buttons[1].right == footer.right && buttons[0].left == footer.left, (name + ": footer buttons unequal, overlapping or not flush").c_str());
+    for (std::size_t k = 1; k < buttons.size(); ++k)
+        require(std::abs(buttons[0].width() - buttons[k].width()) <= 1 && buttons[k - 1].right <= buttons[k].left, (name + ": footer buttons unequal or overlapping").c_str());
+    require(buttons.back().right == footer.right && buttons[0].left == footer.left, (name + ": footer buttons not flush").c_str());
+    if (shape.calendar) {
+        // Seven equal columns across the list, every cell inside its own column.
+        unsigned cells = 0;
+        for (unsigned i = 0; i < t.controls(); ++i) {
+            const auto at = t.control(i);
+            if (c.i16(at + 0x72) != shape.list) continue;
+            const auto box = t.rect(at + 0x10);
+            if (box.top == 0 && box.bottom == 0) continue;
+            const int column = (box.left - list.left) * 7 / list.width();
+            require(box.left >= list.left + column * list.width() / 7 - 1 && box.right <= list.left + (column + 1) * list.width() / 7 + 1 && box.width() >= list.width() / 7 - 2,
+                    (name + ": a calendar cell is not in an equal column").c_str());
+            ++cells;
+        }
+        require(cells >= 40, (name + ": the calendar lost cells").c_str());
+    }
 
     const int lead = panel.left - 110, trail = panel.right - 780;
     unsigned moved = 0;
@@ -63,7 +80,7 @@ inline void verify_holiday(TransferScene& t, GuiCanvas size, const HolidayShape&
             if (box.top == 0 && box.bottom == 0) continue;
             require(box.left >= list.left && box.right <= list.right && box.top >= list.top && box.bottom <= list.bottom,
                     (name + ": setting outside its list").c_str());
-            if (old_left && old_right) {
+            if (!shape.calendar && old_left && old_right) {
                 // A line follows the list's left edge and its right edge; a measured link keeps its width and offset.
                 require(c.i32(at + 0x28) == old_left + lead && c.i32(at + 0x2c) == (old_right >= 750 ? old_right + trail : old_right + lead),
                         (name + ": setting not carried with its panel").c_str());
@@ -81,15 +98,15 @@ inline void verify_holiday(TransferScene& t, GuiCanvas size, const HolidayShape&
             } else require(box == before, (name + ": an unrelated standalone control moved").c_str());
         }
     }
-    require(moved >= 3, (name + ": fixture found too few settings to check").c_str());
+    require(shape.calendar || moved >= 3, (name + ": fixture found too few settings to check").c_str());
 }
 
 void holiday_builder(const char* path) {
     Temporary temp;
     initialize_new_screens(temp.path / "Screens.plist");
     // The original's own links: clicking each setting (action 3) flips its value, and the link's width with it.
-    constexpr unsigned scenarios = 5;
-    const char* names[scenarios]{"as opened", "first setting flipped", "second", "third", "all flipped"};
+    constexpr unsigned scenarios = 6;
+    const char* names[scenarios]{"as opened", "first setting flipped", "second", "third", "all flipped", "calendar"};
     for (unsigned scenario = 0; scenario < scenarios; ++scenario) {
         std::vector<std::uint8_t> baseline;
         for (bool adaptive : {false, true}) {
@@ -140,7 +157,19 @@ void holiday_builder(const char* path) {
                 const auto opened = t.meanings();
                 if (scenario >= 1 && scenario <= 3) require(flip(scenario - 1), "Holiday has no such setting");
                 if (scenario == 4) for (unsigned k = 0; k < 7; ++k) require(flip(k), "Holiday has too few settings");
+                // The calendar: the host's link (action 3, value 13) turns the same screen into the month grid.
+                const auto link_of = [&](unsigned value) {
+                    for (unsigned i = 0; i < t.controls(); ++i)
+                        if (c.u32(t.control(i) + 8) == 3 && c.u32(t.control(i) + 0x48) == value && t.enabled(i)) return int(i);
+                    return -1;
+                };
+                if (scenario == 5) {
+                    const int open = link_of(holiday_return::link_calendar);
+                    require(open >= 0 && t.hit(unsigned(open)) == open, "Holiday has no Calendar link");
+                    require(std::int32_t(t.invoke(c.u32(c.u32(t.history() + 8)), {unsigned(open)})) == -11 && holiday_return::calendar().open, "the Calendar link did not open the calendar");
+                }
                 if (scenario) { build(canvas); require(t.meanings() != opened, "Holiday flip changed nothing the fixture can see"); }
+                if (scenario == 5) require(shape.calendar, "the calendar was not built");
                 if (adaptive) {
                     // Only a career is a state the layout handles.
                     c.put32(t.manager + 4, 0);
@@ -177,7 +206,7 @@ void holiday_builder(const char* path) {
                         c.put32(t.grid(shape.footer) + 4, canvas.height - 45); c.put32(t.grid(shape.footer) + 12, canvas.height - 10);
                         require_rejected(verify, "footer left at the bottom row"); restore();
                     }
-                    {   // a setting's text stays at its classic bounds
+                    if (!shape.calendar) {   // a setting's text stays at its classic bounds
                         bool done = false;
                         for (unsigned k = 0; k < t.controls() && !done; ++k) {
                             const unsigned old_at = 0xba864 + k * 0x17c;
@@ -186,6 +215,11 @@ void holiday_builder(const char* path) {
                         }
                         require(done, "Holiday fixture found no setting to mutate");
                         require_rejected(verify, "setting left at classic bounds"); restore();
+                    }
+                    if (shape.calendar) {   // the calendar's list stays at its classic rectangle
+                        const auto grid = t.grid(shape.list);
+                        c.put32(grid, 130); c.put32(grid + 8, 760); c.put32(grid + 4, 250); c.put32(grid + 12, 535);
+                        require_rejected(verify, "calendar left at classic coordinates"); restore();
                     }
                     {   // the intro paragraph stays at its classic span
                         bool done = false;
@@ -199,6 +233,13 @@ void holiday_builder(const char* path) {
                     }
                     verify();
                     on = false; select_new_screens(false); build(canvas);
+                }
+                // The calendar goes back to the settings through its Cancel (the dialog's No dismisses the settings).
+                if (scenario == 5) {
+                    const int cancel = link_of(holiday_return::calendar_value::cancel);
+                    require(cancel >= 0 && t.hit(unsigned(cancel)) == cancel, "the calendar has no Cancel");
+                    require(std::int32_t(t.invoke(c.u32(c.u32(t.history() + 8)), {unsigned(cancel)})) == -11 && !holiday_return::calendar().open, "Cancel did not close the calendar");
+                    build(canvas);
                 }
                 // Dismissing through the original No: same result, records and RNG with and without the layout.
                 std::vector<std::uint8_t> outcome;

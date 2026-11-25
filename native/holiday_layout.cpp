@@ -8,6 +8,9 @@ namespace cm::aot {
 // message screens: the panel centered under the title bars and at most 800 wide, the settings' text and their
 // links carried with its left edge (a full line follows its right edge), and the two buttons as equal 190px
 // cells right-aligned under the panel. The rows keep their height, so the panel keeps its classic height.
+// In calendar mode (holiday_return.hpp) the list is a grid of seven columns and the footer holds three buttons:
+// the grid keeps its classic top and bottom and takes the panel's width in seven equal columns, and the three
+// buttons are equal 190px cells like the two.
 void layout_holiday(State& s, std::uint32_t display, GuiCanvas canvas) {
     using namespace paged_screen;
     guest::Cpu c(s);
@@ -23,8 +26,8 @@ void layout_holiday(State& s, std::uint32_t display, GuiCanvas canvas) {
         const auto grid = screen.grid(i);
         const auto box = screen.rect(grid);
         if (box == panel_box && screen.columns(grid) == 1 && screen.rows(grid) == 1) claim(panel, i);
-        else if (box == list_box && screen.columns(grid) == 1) claim(list, i);
-        else if (box == footer_box_classic && screen.columns(grid) == 2 && screen.rows(grid) == 1) claim(footer, i);
+        else if (box == list_box && (screen.columns(grid) == 1 || screen.columns(grid) == 7)) claim(list, i);
+        else if (box == footer_box_classic && (screen.columns(grid) == 2 || screen.columns(grid) == 3) && screen.rows(grid) == 1) claim(footer, i);
     }
     if (ambiguous || panel < 0 || list < 0 || footer < 0) return;
     const auto list_grid = screen.grid(list);
@@ -43,7 +46,7 @@ void layout_holiday(State& s, std::uint32_t display, GuiCanvas canvas) {
     const ScreenRect list_after{body.left + (list_box.left - panel_box.left), list_box.top,
                                 body.right - (panel_box.right - list_box.right), list_box.bottom};
     const int lead = body.left - panel_box.left, trail = body.right - panel_box.right;
-    const int total = std::min(body.width(), 2 * 190);
+    const int total = std::min(body.width(), int(screen.columns(screen.grid(footer))) * 190);
     const ScreenRect buttons{body.right - total, body.bottom + gap, body.right, body.bottom + gap + button_height};
 
     GuiGuestScope preserve(s);
@@ -66,6 +69,9 @@ void layout_holiday(State& s, std::uint32_t display, GuiCanvas canvas) {
     screen.write(screen.grid(panel), body);
     screen.measure(screen.grid(panel));
     screen.publish(screen.grid(panel));
+    // The calendar's seven columns are equal, as the footer's cells are.
+    if (screen.columns(list_grid) == 7)
+        for (unsigned column = 0; column < 7; ++column) c.put8(list_grid + 0xbb2 + column, 1);
     screen.write(list_grid, list_after);
     screen.measure(list_grid);
     screen.publish(list_grid);
