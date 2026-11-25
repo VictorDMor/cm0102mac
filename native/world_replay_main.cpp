@@ -523,6 +523,7 @@ int replay_main(int argc, char** argv) {
                 ~ClubRun() {
                     if (!sharing) return;
                     dispatch_probe = nullptr;
+                    shortlist_candidate_hook = nullptr;
                     if (state) state->memory.date_observer = nullptr;
                     try { sharing->report(std::cout); } catch (const std::exception& failure) { std::cerr << "club sharing report failed: " << failure.what() << '\n'; }
                 }
@@ -535,6 +536,7 @@ int replay_main(int argc, char** argv) {
                 active_club_sharing = &*club_run.sharing;
                 state->memory.date_observer = active_club_sharing->observer();
                 dispatch_probe = [](State& s) { active_club_sharing->probe(s); return false; };
+                shortlist_candidate_hook = [](State&, int phase) { active_club_sharing->candidate(phase); };
             }
             std::optional<GuestWorker> worker;   // before the digest, which reads its count on the way out
             struct DigestRun {

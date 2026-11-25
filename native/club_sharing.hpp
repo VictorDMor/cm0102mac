@@ -19,6 +19,8 @@ public:
     MemoryObserver* observer();
     // Called by the dispatcher probe before the page at s.pc runs.
     void probe(State&);
+    // From the candidate scan (shortlist_candidate_hook): its start and end, and each entry it judges.
+    void candidate(int phase);
     void report(std::ostream&) const;
 private:
     struct Impl;

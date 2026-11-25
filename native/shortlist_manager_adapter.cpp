@@ -80,6 +80,7 @@ unsigned shortlist_manager_results(std::uint32_t entry) {
     return routine ? routine->results : 0;
 }
 ShortlistManagerCallHook* shortlist_manager_call_hook = nullptr;
+void (*shortlist_candidate_hook)(State&, int phase) = nullptr;
 
 // Normal internal calls bypass the dispatcher. The checker parent must see
 // each nested call through the entry hook; excluded callees run their originals

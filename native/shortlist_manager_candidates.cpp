@@ -426,6 +426,11 @@ void Scan::conclude_empty() {
 }
 
 void Scan::run() {
+    struct Told {
+        State& s;
+        explicit Told(State& state) : s(state) { if (shortlist_candidate_hook) [[unlikely]] shortlist_candidate_hook(s, 0); }
+        ~Told() { if (shortlist_candidate_hook) [[unlikely]] shortlist_candidate_hook(s, 3); }
+    } told{c.s};
     program.call(0x103721f0, 0x1035ea4c, {at(local::quote)});
     const auto nation = club.nation().get();
     c.put8(at(local::in_window), 1);

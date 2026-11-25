@@ -50,6 +50,18 @@ struct ClubSharing::Impl final : MemoryObserver, AllocatorBoundaryObserver {
     std::map<std::uint32_t, Live> live;
     struct Conflict { std::uint64_t accesses = 0; std::uint32_t sample = 0; std::unordered_set<std::uint32_t> words; std::string block; };
     std::map<std::tuple<int, std::uint32_t, std::uint32_t>, Conflict> conflicts;
+    // Inside the candidate scan: what judging one list entry writes outside the stack, by the code that writes.
+    bool judging = false;
+    std::uint64_t scans = 0, judged = 0, most_judged = 0, judged_in_scan = 0, judge_draws = 0, judge_allocations = 0, scan_draws = 0;
+    bool scanning = false;
+    struct Written { std::uint64_t accesses = 0; std::unordered_set<std::uint32_t> words; std::uint32_t sample = 0; std::string block; };
+    std::map<std::uint32_t, Written> judge_writes;
+    void candidate(int phase) {
+        if (phase == 0) { scanning = true; ++scans; judged_in_scan = 0; }
+        else if (phase == 3) { scanning = false; most_judged = std::max(most_judged, judged_in_scan); }
+        else if (phase == 1) { judging = true; ++judged; ++judged_in_scan; }
+        else judging = false;
+    }
     std::array<std::uint32_t, 4> rng_words{};
     std::uint32_t rng_cursor = 0, date_word = 0, today = 0;
 
@@ -106,7 +118,19 @@ struct ClubSharing::Impl final : MemoryObserver, AllocatorBoundaryObserver {
     void access(std::uint32_t start, std::uint64_t size, bool write) {
         track();
         const auto club = current();
-        if (write && start <= rng_cursor && start + size > rng_cursor) ++(club ? draws_inside : draws_outside);
+        if (write && start <= rng_cursor && start + size > rng_cursor) {
+            ++(club ? draws_inside : draws_outside);
+            if (judging) ++judge_draws; else if (scanning) ++scan_draws;
+        }
+        if (judging && write && !(start >= stack_low && start < stack_high) && !rng(start)) {
+            if (allocator_depth) ++judge_allocations;
+            else {
+                auto& entry = judge_writes[s.pc];
+                ++entry.accesses;
+                if (!entry.sample) { entry.sample = start; entry.block = block_of(start); }
+                if (entry.words.size() < 100000) entry.words.insert(start & ~3u);
+            }
+        }
         if (start >= stack_low && start < stack_high) return;
         auto* map = shadow(start);
         if (!map) return;
@@ -173,6 +197,7 @@ ClubSharing::ClubSharing(State& state) : impl(std::make_unique<Impl>(state)) { s
 ClubSharing::~ClubSharing() { if (impl->s.allocator_observer == impl.get()) impl->s.allocator_observer = nullptr; }
 MemoryObserver* ClubSharing::observer() { return impl.get(); }
 void ClubSharing::probe(State&) { impl->probe(); }
+void ClubSharing::candidate(int phase) { impl->candidate(phase); }
 
 void ClubSharing::report(std::ostream& out) const {
     const auto& i = *impl;
@@ -181,6 +206,19 @@ void ClubSharing::report(std::ostream& out) const {
         << "RNG draws inside the clubs' calls: " << i.draws_inside << ", outside: " << i.draws_outside
         << "; allocator calls inside: " << i.allocator_calls << "\n"
         << "accesses of the clubs' calls outside stack, own blocks, RNG and allocator: " << i.accesses << '\n';
+    out << "candidate scans: " << i.scans << ", entries judged: " << i.judged << " (most in one scan: " << i.most_judged
+        << "); RNG draws while judging: " << i.judge_draws << ", in the scans outside judging: " << i.scan_draws
+        << "; allocator writes while judging: " << i.judge_allocations << '\n';
+    {
+        std::vector<std::pair<std::uint32_t, const Impl::Written*>> rows;
+        std::uint64_t accesses = 0;
+        for (const auto& [pc, value] : i.judge_writes) { rows.push_back({pc, &value}); accesses += value.accesses; }
+        std::sort(rows.begin(), rows.end(), [](const auto& a, const auto& b) { return a.second->accesses > b.second->accesses; });
+        out << "\n-- judging writes, outside the stack while one candidate is judged: " << rows.size() << " distinct words, " << accesses << " accesses, " << rows.size() << " PCs --\n";
+        for (std::size_t n = 0; n < std::min<std::size_t>(rows.size(), 400); ++n)
+            out << "  writer " << hex_text(rows[n].first) << " -> writer " << hex_text(rows[n].first) << ": words=" << rows[n].second->words.size()
+                << " accesses=" << rows[n].second->accesses << " sample=" << hex_text(rows[n].second->sample) << " in " << rows[n].second->block << ", this match 0\n";
+    }
     static const char* const names[] = {"club conflicts, a club reads what another club of the day wrote",
         "club conflicts, two clubs of the day write", "club conflicts, a club writes what another club of the day read"};
     for (int kind = 0; kind < 3; ++kind) {

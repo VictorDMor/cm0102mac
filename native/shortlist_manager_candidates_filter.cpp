@@ -76,6 +76,12 @@ bool try_empty_transfer_filter(Cpu& c, std::uint32_t transfers, std::uint32_t pe
 }
 }
 void Scan::consider(std::uint32_t entry_address) {
+    if (shortlist_candidate_hook) [[unlikely]] {
+        shortlist_candidate_hook(c.s, 1);
+        if (eligible(entry_address)) value();
+        shortlist_candidate_hook(c.s, 2);
+        return;
+    }
     if (eligible(entry_address)) value();
 }
 
