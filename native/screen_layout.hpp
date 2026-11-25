@@ -13,7 +13,7 @@ struct ScreenRect {
     bool operator==(const ScreenRect&) const = default;
 };
 enum class LayoutAxis { fixed, stretch, trailing, centered };
-enum class ScreenTemplate { legacy, startup, league_selection, load_browser, tactics, club_tables, competition, competition_history, match_report, daily_fixtures, nations_and_clubs, player_details, search_tables, search_filters, transfer_history, transfer_proposal, contract_negotiation, loan_terms, negotiation_confirmation, news_inbox, training, training_coaches, training_schedule, transfer_status, previous_offers, message_screen, board_confidence, manager_statistics, world_rankings, uefa_coefficients, hall_of_fame, manager_status, job_information, holiday, bid_rejection, friendly_countries, friendly_dates, credits, web_sites, text_entry, disciplinary, role_choice, head_to_head, paged_table, tabbed_page, centered_dialog };
+enum class ScreenTemplate { legacy, startup, league_selection, load_browser, tactics, club_tables, competition, competition_history, match_report, daily_fixtures, nations_and_clubs, player_details, search_tables, search_filters, transfer_history, transfer_proposal, contract_negotiation, loan_terms, negotiation_confirmation, news_inbox, training, training_coaches, training_schedule, transfer_status, previous_offers, message_screen, board_confidence, manager_statistics, world_rankings, uefa_coefficients, hall_of_fame, manager_status, job_information, holiday, bid_rejection, friendly_countries, friendly_dates, credits, web_sites, text_entry, disciplinary, role_choice, head_to_head, paged_table, tabbed_page, centered_dialog, squad_numbers };
 constexpr ScreenTemplate screen_template(std::uint32_t builder) {
     switch (builder) {
     case 0x10334550: return ScreenTemplate::startup;
@@ -124,6 +124,8 @@ constexpr ScreenTemplate screen_template(std::uint32_t builder) {
     // Pages with a tab bar: the transfer rules article of the news, the Historial, the game database and a club's Historial.
     // The tournament setup of the friendly tour: a fixed dialog in the middle of the window.
     case 0x10046de0: return ScreenTemplate::centered_dialog;
+    // Squad Numbers and the European Squad (one builder, opened from the news and before a match): a palette of the numbers 1-50 and a list of the squad.
+    case 0x1004a4a0: return ScreenTemplate::squad_numbers;
     case 0x106ff680: case 0x10145290: case 0x10106840: case 0x1003b7f0: return ScreenTemplate::tabbed_page;
     case 0x102cea30: return ScreenTemplate::news_inbox;
     default: return ScreenTemplate::legacy;

@@ -1155,6 +1155,7 @@ void player_builder(const char* path, unsigned section = 1) {
 #include "adaptive_transfer_history_checks.hpp"
 #include "adaptive_startup_checks.hpp"
 #include "adaptive_load_browser_checks.hpp"
+#include "adaptive_squad_numbers_checks.hpp"
 
 void screens_preference() {
     Temporary temp;
@@ -1357,6 +1358,7 @@ int main(int argc, char** argv) {
         else if (argc == 3 && std::string_view(argv[2]) == "--transfer-history") transfer_history_builder(argv[1]);
         else if (argc == 3 && std::string_view(argv[2]) == "--startup") startup_builder(argv[1]);
         else if (argc == 3 && std::string_view(argv[2]) == "--load-browser") load_browser_builder(argv[1]);
+        else if (argc == 3 && std::string_view(argv[2]) == "--squad-numbers") squad_numbers_builder(argv[1]);
         else if (argc == 3 && std::string_view(argv[2]) == "--player-tabs") {
             player_builder(argv[1], 3); player_builder(argv[1], 4);
         }

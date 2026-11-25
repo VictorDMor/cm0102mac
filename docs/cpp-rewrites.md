@@ -2461,8 +2461,40 @@ object (TOC -0x7bb0) owns two display tables (+0x2c68, +0x12d6b0) and, per human
   Historial and club Historial bodies (a tab's sub-builder fills them from text files that the check platform does not have: the
   bodies are one empty row), real news for the article, how a player reaches the tournament setup, other languages. Still classic:
   the competition team comparison 0x10073d00, the club Historial's file-backed sibling 0x101434a0 (needs its text file), the
-  compare-players screen 0x1038e350, 0x100465c0 / 0x10048450 / 0x10048e00 / 0x1004a4a0 / 0x10054810 and the rest of the list in
+  compare-players screen 0x1038e350, 0x100465c0 / 0x10048450 / 0x10048e00 / 0x10054810 and the rest of the list in
   `.local/rewrites/screens/NOTES.md`.
+- Squad Numbers and the European Squad (CLUB_SCREENS.CPP; one builder, `0x1004a4a0`, with the handler `0x10052740` and the destructor
+  `0x10054680` in the descriptor at `0x108b876c`). History 2 tells the mode: 1 is the squad numbers (history 3 is 1 for the forthcoming
+  season, 0 for a change during the season), 2 the European squad. Three openers push the 19 history values: `0x10049f80(instance, news
+  ID)` and `0x1004a200(instance, news ID)` from the news (the squad numbers of a news item of type 24 or another type; the European squad with
+  payload words 2, 4 and 5 as histories 11-13) and `0x10049c10(slot)` from the routine at `0x1029ab28` that runs before a match. The classic
+  screen is the menus (View, Sort by) at 110,145-360,165 and Auto/Clear (actions 3 and 4) at 530,145-780,165, a heading at 110,170-780,205,
+  the numbers 1-25 and 26-50 as two grids of 25 buttons (110,210-780,230 and 110,515-780,535: a taken number is a disabled cell, a free one
+  has action 5 and the number as payload; every number button and every player's number box is a drag source and drop target, kind 0x46, and dragging a free number onto a player's box assigns it, as the driven classic screen showed), the squad as one grid of eight columns
+  (number box, marker with action 2011, name with action 2007, positions; twice) and twelve rows at 110,235-780,510, and the Back (11) and
+  Submit (12) footer. The builder made the cells of every player (twenty rows for forty) and left the rows after the twelfth hidden
+  behind the scrollbar, so the layout can show more of them with the same row machinery as the other lists (`show_rows`, `set_rows`,
+  `resize_rows`). The European squad has no strips; its list is at 110,210-780,495 with the counter line at 110,500-780,535, and
+  its other views are tables of thirteen columns that the layout does not know and leaves as built. `squad_numbers_layout.cpp`:
+  a panel centered and at most 960 wide; one header row with the menus at its left edge and Auto/Clear at its right edge; the fifty numbers
+  as one palette of two equal-button rows (24px each, 2px apart) directly under it; the heading and then the list, whose rows are 21 to 24px apart
+  and which shows as many rows as the canvas holds, the whole squad when it fits (the scrollbar is then gone, as in the other lists);
+  a half of a row keeps the classic widths of its number box (32), marker (27) and positions (89), the name takes the width the panel adds,
+  and a gap of up to 24px grows between the halves; the counter of the European squad follows the list; and the shared compact Back/Submit
+  footer at the panel's right edge. Rows hold two players each (the builder's grid has eight columns), so three player columns were not
+  possible without moving cells between rows. The layout declines (classic geometry) when a grid, the heading or the counter is
+  missing or duplicated, a list cell already has bounds of its own, a name would be under 100px or twelve rows do not fit. Gate: a career
+  is open. `--squad-numbers` opens each state through its original opener on the reference week and drives the original handler: the
+  forthcoming season, the current season, the European squad, another sort (a Sort by item, delivered by index as `popup N` does), Auto
+  then Clear and another European view, each at seven canvases with mutants refused (list or Auto/Clear at classic coordinates, a
+  drifted footer button, the heading at its classic place, a list cell at classic text bounds, a number button out of its row, the
+  counter at its place, an uneven row), a screen without its heading left as built, and the records, the numbers the club gives its
+  players, RNG, texts and the Back result compared with New Screens off. A driven run (`game_driver.py`, 1800x1035, the news item
+  "Numeração do plantel" of 4 Aug 2001 and its Responder button) showed the layout, a changed sort and the heading following it. Unexercised: the
+  drag of a number onto a player in the new layout (the check proves only that no rectangles overlap, since the click picker never
+  answers for action 5; the driver's drag assigned 42 to a player at the classic 800x600 canvas, but at 1800x1035 the release landed on
+  the same player name whatever the two controls, probably the real pointer, so it proves nothing), Submit (it opens a dialog and changes the club's numbers),
+  the opener before a match, a squad of other sizes than the fixture's forty and other languages.
 - FILE_SCREENS' generic message box and the confirmation before a match. The box (render 0x100f08c0, opened by
   0x100f05a0 and the long-text twin 0x100f0720; every opener shares the render: Exit the game, Restart the game
   and the other questions of the menu bar, the file screens, SETUP and SEARCH_SCREENS, the tactics formation

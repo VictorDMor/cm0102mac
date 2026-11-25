@@ -68,6 +68,7 @@ void layout_head_to_head(State&, std::uint32_t display, GuiCanvas);
 void layout_paged_table(State&, std::uint32_t display, GuiCanvas);
 void layout_tabbed_page(State&, std::uint32_t display, GuiCanvas);
 void layout_centered_dialog(State&, std::uint32_t display, GuiCanvas);
+void layout_squad_numbers(State&, std::uint32_t display, GuiCanvas);
 void layout_next_match(State&, std::uint32_t display, GuiCanvas);
 void layout_competition_stage(State&, std::uint32_t display, GuiCanvas);
 void layout_competition_list(State&, std::uint32_t display, GuiCanvas, unsigned section, bool historical);

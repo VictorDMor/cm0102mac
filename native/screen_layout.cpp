@@ -347,6 +347,7 @@ void layout_built_screen(State& s, std::uint32_t display, std::uint32_t builder)
     case ScreenTemplate::paged_table: layout_paged_table(s, display, layout.canvas); break;
     case ScreenTemplate::tabbed_page: layout_tabbed_page(s, display, layout.canvas); break;
     case ScreenTemplate::centered_dialog: layout_centered_dialog(s, display, layout.canvas); break;
+    case ScreenTemplate::squad_numbers: layout_squad_numbers(s, display, layout.canvas); break;
     case ScreenTemplate::competition:
     case ScreenTemplate::competition_history: {
         guest::Cpu c(s);

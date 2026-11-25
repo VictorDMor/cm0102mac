@@ -183,6 +183,7 @@ bool adaptive_screen_available(const State& s, std::uint32_t builder) {
     case ScreenTemplate::paged_table:
     case ScreenTemplate::tabbed_page:
     case ScreenTemplate::centered_dialog:
+    case ScreenTemplate::squad_numbers:
         // The layout reads no record (the dialogs name a person or two clubs of the career); it only moves what the
         // builder placed.
         return instance && read(instance + 0x24);
