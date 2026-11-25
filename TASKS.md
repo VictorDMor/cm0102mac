@@ -60,7 +60,8 @@ Where the week's largest block goes (the multi-league week's profile, `.local/lo
 
 ## Squad numbers screen (Victor, 2026-11-25)
 
-- [ ] New Screens layout for the squad numbers screen ("Números Plantel"): the fifty number buttons as one palette, the squad list as the main area with even rows and more columns on wide canvases. A subagent is on it (its own commit).
+- [x] New Screens layout for the squad numbers screen (418f8b91, subagent; native/squad_numbers_layout.cpp). The screen is CLUB_SCREENS: builder 0x1004a4a0, handler 0x10052740 (one builder for squad numbers and the European squad). As built: a centred panel of at most 960 px, the menus and Auto/Clear in one header row, the fifty numbers as one palette of two rows under it, the list with even rows showing as much of the squad as the canvas holds (all forty at 1800x1035, no scrollbar then), Back/Submit at the panel's right. Two players a row, as the builder's grid has it (three columns would mean moving cells between rows: not done). Check: `cm-adaptive-gui-checks <snapshot> --squad-numbers` (six states at seven canvases, nine mutants refused). Seen in a driven run by the subagent and in its snapshot by me.
+- [ ] Not verified there: dragging a number onto a player in the new layout (the driven game's drag worked at the classic canvas and opened the player's profile at 1800x1035; suspected to be the driver's pointer, not shown either way): Victor to try in play. Also Submit, the opener before a match, other languages.
 
 ## Holiday mode (Victor, 2026-11-24)
 
