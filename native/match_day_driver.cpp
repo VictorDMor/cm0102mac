@@ -1,7 +1,7 @@
 #include "match_day_driver.hpp"
 #include "guest_abi.hpp"
 #include "guest_scratch.hpp"
-#include "guest_worker.hpp"
+#include "guest_worker_pool.hpp"
 #include "match_play.hpp"
 #include "tactics.hpp"
 
@@ -48,37 +48,6 @@ constexpr std::size_t stretch_limit = 32;
 
 bool finished(std::int8_t state) { return state == 2 || state == 8; }
 
-unsigned worker_count() {
-    unsigned count = 0;
-    if (const char* value = std::getenv("CM_MATCH_WORKERS")) {
-        const std::string_view text(value);
-        std::from_chars(text.data(), text.data() + text.size(), count);
-    }
-    if (!count) {
-        int cores = 0;
-        std::size_t size = sizeof cores;
-        if (sysctlbyname("hw.perflevel0.physicalcpu", &cores, &size, nullptr, 0) != 0 || cores < 1) cores = 4;
-        count = std::min(unsigned(cores), 8u);
-    }
-    return std::clamp(count, 1u, unsigned(GuestScratch::limit));
-}
-// The workers of the game's State, made at the first parallel stretch and kept.
-struct Workers {
-    State* main = nullptr;
-    std::vector<std::unique_ptr<GuestWorker>> list;
-    std::vector<std::unique_ptr<GuestWorker>>& of(State& s) {
-        if (main != &s || list.empty()) {
-            list.clear();
-            main = nullptr;
-            std::vector<std::unique_ptr<GuestWorker>> made;
-            for (unsigned n = 0, count = worker_count(); n < count; ++n) made.push_back(std::make_unique<GuestWorker>(s, n));
-            list = std::move(made);
-            main = &s;
-        }
-        return list;
-    }
-};
-Workers workers;
 
 struct Driver {
     Cpu& c;
@@ -376,7 +345,7 @@ struct Driver {
     // does not depend on which worker plays it or on how many there are. The game thread only waits.
     void play_on_workers(std::vector<Pending>& pending) {
         if (pending.empty()) return;
-        auto& list = workers.of(c.s);
+        auto& list = guest_workers(c.s);
         const std::uint64_t base = std::uint64_t(c.u32(c.toc(-0x7b84))) << 32 | c.u32(c.toc(-0x7b90));   // the cursor and the salt
         const auto first = fixtures();
         std::atomic<std::size_t> next{0};

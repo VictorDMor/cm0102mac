@@ -7,7 +7,9 @@
 #include "shortlist_manager_candidates.hpp"
 #include "shortlist_manager_detail.hpp"
 #include "shortlist_manager_random.hpp"
+#include <array>
 #include <bit>
+#include <vector>
 
 namespace cm::aot::shortlist_manager::candidates {
 using namespace detail;
@@ -233,6 +235,22 @@ struct Scan {
     bool set_minimum();
     void set_categories();
     void walk();
+    // Experimental, CM_SHORTLIST_PARALLEL=1 (TASKS.md, "The shortlist manager's 37%"): the entries' eligibility is
+    // judged on guest workers before the walk, and consider() takes each verdict in list order instead of
+    // judging. What an eligible entry's judging left for the valuation comes back with the verdict.
+    struct Verdict {
+        bool eligible = false;
+        std::array<std::uint32_t, 9> registers{};   // r13, r14, r18-r23, r25
+        std::uint64_t f29 = 0, f30 = 0;
+        std::array<std::uint8_t, 0xd8> locals{};    // the frame's 0x38-0x110
+        std::uint32_t current_contract = 0;         // the scratch word of slot::current_contract
+    };
+    std::vector<std::uint32_t> judged_entries;
+    std::vector<Verdict> verdicts;
+    std::size_t next_verdict = 0;
+    bool judge_on_workers();
+    void capture(Verdict&) const;
+    void restore(const Verdict&);
     void take(std::uint32_t chosen);
     void conclude_empty();
     // One list entry: the filters (shortlist_manager_candidates_filter.cpp)...

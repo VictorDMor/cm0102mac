@@ -60,6 +60,14 @@ void begin_play(State& s, PlayContext& play, std::uint64_t seed) {
     s.wr<4>(guest::reg::gpr(2), r2);
     GuestScratch::set_play(s, &play);
 }
+void seed_stream(State& s, std::uint64_t seed) {
+    const auto range = GuestScratch::range_of(s);
+    const auto r2 = range + GuestScratch::toc_copy + 0x8000, statics = range + GuestScratch::statics;
+    const auto pool = std::uint32_t(s.memory.read<4>(toc + std::uint32_t(pool_slot)));
+    s.memory.write<4>(statics + cursor_at, pool + 2 * std::uint32_t(mix(seed) % rng::pool_samples));
+    s.memory.write<4>(statics + salt_at, std::uint32_t(mix(seed) % pool_salts));
+    s.memory.write<4>(r2 + std::uint32_t(crt_state), std::uint32_t(mix(seed)));
+}
 void end_play(State& s, PlayContext& play) {
     GuestScratch::set_play(s, nullptr);
     const auto range = GuestScratch::range_of(s);

@@ -51,7 +51,8 @@ struct ClubSharing::Impl final : MemoryObserver, AllocatorBoundaryObserver {
     struct Conflict { std::uint64_t accesses = 0; std::uint32_t sample = 0; std::unordered_set<std::uint32_t> words; std::string block; };
     std::map<std::tuple<int, std::uint32_t, std::uint32_t>, Conflict> conflicts;
     // Inside the candidate scan: what judging one list entry writes outside the stack, by the code that writes.
-    bool judging = false;
+    bool judging = false, valuing = false;
+    std::uint64_t valued = 0, eligibility_draws = 0;
     std::uint64_t judge_serial = 0, judge_blocks_total = 0, judge_survivors = 0, judge_foreign_frees = 0;
     std::vector<std::uint32_t> judge_blocks;
     std::map<std::uint32_t, std::uint64_t> survivor_sizes, survivor_links;
@@ -65,11 +66,12 @@ struct ClubSharing::Impl final : MemoryObserver, AllocatorBoundaryObserver {
     std::uint64_t scans = 0, judged = 0, most_judged = 0, judged_in_scan = 0, judge_draws = 0, judge_allocations = 0, scan_draws = 0;
     bool scanning = false;
     struct Written { std::uint64_t accesses = 0; std::unordered_set<std::uint32_t> words; std::uint32_t sample = 0; std::string block; };
-    std::map<std::uint32_t, Written> judge_writes;
+    std::map<std::uint32_t, Written> judge_writes, value_writes;   // while eligibility is judged; during the valuation
     void candidate(int phase) {
         if (phase == 0) { scanning = true; ++scans; judged_in_scan = 0; }
         else if (phase == 3) { scanning = false; most_judged = std::max(most_judged, judged_in_scan); }
-        else if (phase == 1) { judging = true; ++judged; ++judged_in_scan; ++judge_serial; }
+        else if (phase == 1) { judging = true; valuing = false; ++judged; ++judged_in_scan; ++judge_serial; }
+        else if (phase == 4) { valuing = true; ++valued; }
         else {
             judging = false;
             // Blocks this judging allocated and did not release: they outlive it.
@@ -135,12 +137,12 @@ struct ClubSharing::Impl final : MemoryObserver, AllocatorBoundaryObserver {
         const auto club = current();
         if (write && start <= rng_cursor && start + size > rng_cursor) {
             ++(club ? draws_inside : draws_outside);
-            if (judging) ++judge_draws; else if (scanning) ++scan_draws;
+            if (judging) { ++judge_draws; if (!valuing) ++eligibility_draws; } else if (scanning) ++scan_draws;
         }
         if (judging && write && !(start >= stack_low && start < stack_high) && !rng(start)) {
             if (allocator_depth) ++judge_allocations;
             else if (!own_block(start)) {
-                auto& entry = judge_writes[s.pc];
+                auto& entry = (valuing ? value_writes : judge_writes)[s.pc];
                 ++entry.accesses;
                 if (!entry.sample) { entry.sample = start; entry.block = block_of(start); }
                 if (entry.words.size() < 100000) entry.words.insert(start & ~3u);
@@ -236,12 +238,14 @@ void ClubSharing::report(std::ostream& out) const {
     for (const auto& [size, count] : i.survivor_sizes) out << "  surviving block of " << size << " bytes x" << count << '\n';
     for (const auto& [link, count] : i.survivor_links) out << "  surviving block allocated at " << hex_text(link) << " x" << count << '\n';
     out << "";
-    {
+    out << "entries that passed eligibility: " << i.valued << "; RNG draws during eligibility: " << i.eligibility_draws << '\n';
+    for (const bool valuation : {false, true}) {
+        const auto& writes = valuation ? i.value_writes : i.judge_writes;
         std::vector<std::pair<std::uint32_t, const Impl::Written*>> rows;
         std::uint64_t accesses = 0;
-        for (const auto& [pc, value] : i.judge_writes) { rows.push_back({pc, &value}); accesses += value.accesses; }
+        for (const auto& [pc, value] : writes) { rows.push_back({pc, &value}); accesses += value.accesses; }
         std::sort(rows.begin(), rows.end(), [](const auto& a, const auto& b) { return a.second->accesses > b.second->accesses; });
-        out << "\n-- judging writes, outside the stack while one candidate is judged: " << rows.size() << " distinct words, " << accesses << " accesses, " << rows.size() << " PCs --\n";
+        out << "\n-- " << (valuation ? "valuing writes, outside the stack during one candidate's valuation: " : "judging writes, outside the stack while one candidate's eligibility is judged: ") << rows.size() << " distinct words, " << accesses << " accesses, " << rows.size() << " PCs --\n";
         for (std::size_t n = 0; n < std::min<std::size_t>(rows.size(), 400); ++n)
             out << "  writer " << hex_text(rows[n].first) << " -> writer " << hex_text(rows[n].first) << ": words=" << rows[n].second->words.size()
                 << " accesses=" << rows[n].second->accesses << " sample=" << hex_text(rows[n].second->sample) << " in " << rows[n].second->block << ", this match 0\n";

@@ -35,6 +35,7 @@ protected:
 };
 extern ShortlistManagerCallHook* shortlist_manager_call_hook;
 // For diagnostics (club_sharing.hpp): told when the candidate scan (0x1035e9f0) starts (0) and ends (3) and when
-// it starts (1) and ends (2) judging one list entry. Null in the game.
+// it starts (1) and ends (2) judging one list entry, and (4) when an entry passed eligibility and its valuation
+// begins. Null in the game.
 extern void (*shortlist_candidate_hook)(State&, int phase);
 }

@@ -284,6 +284,9 @@ void Scan::set_categories() {
 // +0x58) holds 12-byte entries, the first person id -1 ending the walk;
 // the counts are at manager +0x98.
 void Scan::walk() {
+    judge_on_workers();
+    // Verdicts belong to this walk only.
+    struct Forget { Scan& scan; ~Forget() { scan.verdicts.clear(); scan.judged_entries.clear(); scan.next_verdict = 0; } } forget{*this};
     for (;;) {
         const std::int32_t category = std::int8_t(c.u8(at(local::category)));
         if (compare(c, category, c.i32(at(local::last_category))) > 0) return;

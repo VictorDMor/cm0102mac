@@ -76,9 +76,19 @@ bool try_empty_transfer_filter(Cpu& c, std::uint32_t transfers, std::uint32_t pe
 }
 }
 void Scan::consider(std::uint32_t entry_address) {
+    if (next_verdict < verdicts.size() && judged_entries[next_verdict] == entry_address) {
+        const auto& verdict = verdicts[next_verdict++];
+        if (!verdict.eligible) return;
+        restore(verdict);
+        value();
+        return;
+    }
     if (shortlist_candidate_hook) [[unlikely]] {
         shortlist_candidate_hook(c.s, 1);
-        if (eligible(entry_address)) value();
+        if (eligible(entry_address)) {
+            shortlist_candidate_hook(c.s, 4);
+            value();
+        }
         shortlist_candidate_hook(c.s, 2);
         return;
     }

@@ -33,6 +33,9 @@ struct PlayContext {
 // On the worker's thread, around one match: the State must own a scratch range (guest_scratch.hpp).
 void begin_play(State& worker, PlayContext&, std::uint64_t seed);
 void end_play(State& worker, PlayContext&);
+// Between begin_play and end_play: restarts the worker's RNG stream from another seed (one stream per unit of
+// work, so results do not depend on how the units were shared out).
+void seed_stream(State& worker, std::uint64_t seed);
 // On the game thread, after a stretch: names on stderr each small-data word a play wrote that was not seen before.
 void report_private_writes(const PlayContext&);
 // On the game thread: the held-back calls of one match. `cells` is the address of 16 free bytes of guest memory.
