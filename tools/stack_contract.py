@@ -67,7 +67,12 @@ class Routines:
     """Routine and module of a PC, from the newest inventory and the export."""
 
     def __init__(self):
-        inventories = sorted((ROOT / ".local/inventory").glob("*/inventory.json"))
+        # game_inventory.py writes to --out (default .local/inventory itself);
+        # older runs kept dated subdirectories.
+        base = ROOT / ".local/inventory"
+        inventories = sorted(base.glob("*/inventory.json"), key=lambda p: p.stat().st_mtime)
+        inventories += [base / "inventory.json"] if (base / "inventory.json").exists() else []
+        inventories.sort(key=lambda p: p.stat().st_mtime)
         if not inventories:
             sys.exit("No inventory: run tools/game_inventory.py first")
         self.source = inventories[-1]
