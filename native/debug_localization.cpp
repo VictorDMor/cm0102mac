@@ -25,6 +25,25 @@ std::string_view debug_text(unsigned language, DebugText text) {
             "Fjern misn\370ye", "Remover Insatisfa\347\365es", "Ta bort missn\366je"};
         return labels[language < labels.size() ? language : 0];
     }
+    if (text >= DebugText::group_squad) {
+        // The Debugging Options screen's group headings and footer buttons. English, US English, French,
+        // German, Italian, Spanish, Danish, Dutch, Norwegian, Portuguese and Swedish.
+        static constexpr std::array<std::array<std::string_view, 11>, 8> words{{
+            {"Squad", "Squad", "Effectif", "Kader", "Rosa", "Plantilla", "Trup", "Selectie", "Tropp", "Elenco", "Trupp"},
+            {"Player", "Player", "Joueur", "Spieler", "Giocatore", "Jugador", "Spiller", "Speler", "Spiller", "Jogador", "Spelare"},
+            {"Contracts & Transfers", "Contracts & Transfers", "Contrats et transferts", "Vertr\344ge & Transfers",
+             "Contratti e trasferimenti", "Contratos y fichajes", "Kontrakter og transfers", "Contracten en transfers",
+             "Kontrakter og overganger", "Contratos e Transfer\352ncias", "Kontrakt och \366verg\345ngar"},
+            {"Match", "Match", "Match", "Spiel", "Partita", "Partido", "Kamp", "Wedstrijd", "Kamp", "Partida", "Match"},
+            {"Results", "Results", "R\351sultats", "Ergebnisse", "Risultati", "Resultados", "Resultater", "Resultaten",
+             "Resultater", "Resultados", "Resultat"},
+            {"All On", "All On", "Tout activer", "Alle ein", "Tutto attivo", "Activar todo", "Alle til", "Alles aan",
+             "Alle p\345", "Ligar Tudo", "Alla p\345"},
+            {"All Off", "All Off", "Tout d\351sactiver", "Alle aus", "Tutto disattivo", "Desactivar todo", "Alle fra",
+             "Alles uit", "Alle av", "Desligar Tudo", "Alla av"},
+            {"Page", "Page", "Page", "Seite", "Pagina", "P\341gina", "Side", "Pagina", "Side", "P\341gina", "Sida"}}};
+        return words[unsigned(text) - unsigned(DebugText::group_squad)][language < 11 ? language : 0];
+    }
     if (text == DebugText::club_rule_pair_hint) {
         static constexpr std::array<std::string_view, 11> labels{
             "Two listed teams: only Win vs Loss keeps the club rules.",

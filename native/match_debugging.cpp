@@ -13,6 +13,8 @@
 #include "best_xi_selection.hpp"
 #include "national_callup.hpp"
 #include "transfer_screens.hpp"
+#include "adaptive_gui.hpp"
+#include "debug_options_layout.hpp"
 #include <array>
 #include <algorithm>
 #include <cstdlib>
@@ -298,8 +300,30 @@ constexpr unsigned club_results_action = 30026, add_club_action = 30027, remove_
 constexpr unsigned force_club_action = 30029, club_result_action = 30300;
 constexpr unsigned club_yes_action = 30304, club_no_action = 30305, club_prev_action = 30306;
 constexpr unsigned club_next_action = 30307, club_back_action = 30308, club_results_mode = 5;
+constexpr unsigned options_previous_action = 30060, options_next_action = 30061, options_all_on_action = 30062;
+constexpr unsigned all_off_action = 39;  // the original options reset control: the modal's "All Off"
 constexpr unsigned clubs_per_page = 12;
 std::optional<std::uint32_t> pending_features;
+unsigned options_page = 0;
+// The Debugging Options screen groups its switches by what they act on, in this order.
+struct OptionGroup { DebugText title; std::array<DebugFeature, 5> features; unsigned count; };
+constexpr std::array option_groups{
+    OptionGroup{DebugText::group_squad, {DebugFeature::recover_players, DebugFeature::play_for_free,
+        DebugFeature::extend_all_contracts, DebugFeature::remove_unhappiness}, 4},
+    OptionGroup{DebugText::group_player, {DebugFeature::maximize_attributes, DebugFeature::recover_player}, 2},
+    OptionGroup{DebugText::group_contracts, {DebugFeature::extend_contract, DebugFeature::cancel_sale,
+        DebugFeature::remove_sale_clause, DebugFeature::force_purchase, DebugFeature::force_staff_signing}, 5},
+    OptionGroup{DebugText::group_match, {DebugFeature::add_goal, DebugFeature::repeat_goal, DebugFeature::red_cards,
+        DebugFeature::injuries}, 4},
+    OptionGroup{DebugText::group_results, {DebugFeature::underdogs, DebugFeature::underdogs_max,
+        DebugFeature::match_result, DebugFeature::all_draws}, 4}};
+constexpr bool every_feature_in_one_group() {
+    unsigned seen = 0, total = 0;
+    for (const auto& group : option_groups)
+        for (unsigned i = 0; i < group.count; ++i) { seen |= 1u << unsigned(group.features[i]); ++total; }
+    return seen == all_debug_features && total == debug_feature_count;
+}
+static_assert(every_feature_in_one_group(), "Every debugging switch needs exactly one group");
 constexpr std::array feature_labels{
     DebugText::recover_players, DebugText::play_for_free, DebugText::extend_contract,
     DebugText::cancel_sale, DebugText::remove_sale_clause, DebugText::underdogs,
@@ -595,6 +619,7 @@ bool dispatch_debugging_sidebar(State& s) {
             // Mode 4 selects only our body; Cancel/OK still close it normally.
             call.call(0x1033ce70, {debug_options_mode});
             pending_features = native_debugging_features();
+            options_page = 0;
         }
     }
     s.wr<4>(12, std::uint32_t(-11)); s.pc = s.r<4>(4128);
@@ -615,13 +640,34 @@ bool build_debugging_options_screen(State& s) {
         GuestCall call(s);
         const auto ui = root(s), page = screen(s, ui), toc = std::uint32_t(s.r<4>(8));
         const auto color = [&](unsigned offset) { return std::uint32_t(s.memory.read<2>(s.memory.read<4>(toc - offset))); };
-        draw_debugging_panel(call, ui, page, 145, 744, color(0x7bd4), color(0x7bc8),
-            debug_text(s, DebugText::options));
+        const auto text = [&](DebugText label) { return debug_text(s, label); };
+        std::array<unsigned, option_groups.size()> group_rows;
+        for (unsigned g = 0; g < option_groups.size(); ++g) group_rows[g] = option_groups[g].count;
+        const auto layout = debug_options_layout(gui_canvas(s), group_rows);
+        options_page = std::min(options_page, layout.pages - 1);
+        const auto box = [](ScreenRect r) { return std::array<std::uint32_t, 4>{std::uint32_t(r.left),
+            std::uint32_t(r.top), std::uint32_t(r.right), std::uint32_t(r.bottom)}; };
+        // Every rectangle call takes the owner (the page for a grid, the UI for a text) and the four
+        // edges, then three more values.
+        const auto rect_call = [&](std::uint32_t entry, std::array<std::uint32_t, 4> r,
+                                    std::uint32_t first, std::uint32_t second, std::uint32_t third) {
+            return call.call(entry, {entry == 0x107198c0 ? page : ui, r[0], r[1], r[2], r[3], first, second, third});
+        };
 
-        // Original 75/25 footer: wide Cancel, compact OK, same relief and type.
+        // A dimming grid over the whole canvas and the panel with its title.
+        call.call(0x10712e60, {0});
+        call.args({0, 2, 0, 0xffffffffu});
+        rect_call(0x107198c0, box(layout.background), 1, 0, 1);
+        const auto panel_color = call.call(0x1076bb20, {0, 0x38, 0, 0});
+        call.args({0, 0x30, panel_color, 0xffffffffu});
+        rect_call(0x107198c0, box(layout.panel), 1, 0, 1);
+        call.args({4, color(0x7bc8), call.text(text(DebugText::options))});
+        rect_call(0x10744390, box(layout.title), 0x30, color(0x7bd4), 12);
+
+        // Footer: Cancel and OK are two equal cells of the original grid, with the original texts and actions.
         s.memory.write<2>(call.stack + 0xc0, s.memory.read<2>(toc - 0x3894));
         call.args({0, 1, 0, 0xffffffffu});
-        const auto footer = call.call(0x107198c0, {page, 155, 509, 734, 539, 2, call.stack + 0xc0, 1});
+        const auto footer = rect_call(0x107198c0, box(layout.footer), 2, call.stack + 0xc0, 1);
         const auto pool = std::uint32_t(s.memory.read<4>(toc - 0x4e18));
         const auto buffer = std::uint32_t(s.memory.read<4>(toc - 0x7bb8));
         for (unsigned col = 0; col < 2; ++col) {
@@ -629,33 +675,58 @@ bool build_debugging_options_screen(State& s) {
             call.args({color(0x7bc8), buffer, col ? 41u : 40u, 0});
             call.call(0x107444e0, {ui, footer, col, 0, 0x30, color(0x7bc4), 12, 3});
         }
-        call.call(0x10727890, {buffer, pool + 0x8a8});
-        call.args({1, color(0x7bc8), buffer, 39, 0});
-        call.call(0x10744430, {ui, 609, 115, 734, 135, 0x30, color(0x7bc4), 12});
+        // The utility row: All On and All Off, and the pager when the switches take several pages.
+        const auto muted = call.call(0x1076bb20, {0x80, 0x80, 0x80, 0});
+        const auto cell_button = [&](ScreenRect r, DebugText label, unsigned action, bool enabled) {
+            call.args({0, 1, 0, 0xffffffffu});
+            const auto grid = rect_call(0x107198c0, box(r), 1, 0, 1);
+            call.args({enabled ? color(0x7bc8) : muted, call.text(text(label)), enabled ? action : 0, 0});
+            call.call(enabled ? 0x107444e0 : 0x107445a0,
+                {ui, grid, 0, 0, enabled ? 0x30u : 1u, enabled ? color(0x7bc4) : 0u, 12, 2});
+        };
+        cell_button(layout.all_on, DebugText::all_on, options_all_on_action, true);
+        cell_button(layout.all_off, DebugText::all_off, all_off_action, true);
+        if (layout.pages > 1) {
+            cell_button(layout.previous, DebugText::previous, options_previous_action, options_page != 0);
+            call.args({0, 1, 0, 0xffffffffu});
+            const auto indicator = rect_call(0x107198c0, box(layout.page), 1, 0, 1);
+            call.args({color(0x7bc8), call.text(std::string(text(DebugText::page)) + " " +
+                std::to_string(options_page + 1) + " / " + std::to_string(layout.pages))});
+            call.call(0x107445a0, {ui, indicator, 0, 0, 1, 0, 12, 2});
+            cell_button(layout.next, DebugText::next, options_next_action, options_page + 1 < layout.pages);
+        }
 
-        // Draw the same striped pitch underneath the settings grid. The
-        // original pitch routine writes its four inset bounds to scratch.
+        // Draw the same striped pitch underneath the settings. The original pitch routine writes its four
+        // inset bounds to scratch.
         s.wr<8>(0x4010, float_bits<8>(float_value<4>(s.memory.read<4>(s.memory.read<4>(toc - 0x4ec4)))));
         call.args({1, footer});
-        call.call(0x103cbb30, {165, 145, 724, 489, call.stack + 0xd0,
-            call.stack + 0xd4, call.stack + 0xd8, call.stack + 0xdc});
-        s.memory.copy_in(call.stack + 0xc0, std::vector<std::uint8_t>{64, 18, 18});
-        call.args({0, 1, 0, 0xffffffffu});
-        const auto grid = call.call(0x107198c0, {page, 170, 150, 719, 484, 3,
-            call.stack + 0xc0, debug_feature_count});
+        const ScreenRect pitch{layout.body.left - 5, layout.body.top - 5, layout.body.right + 5, layout.body.bottom + 5};
+        call.call(0x103cbb30, {std::uint32_t(pitch.left), std::uint32_t(pitch.top), std::uint32_t(pitch.right),
+            std::uint32_t(pitch.bottom), call.stack + 0xd0, call.stack + 0xd4, call.stack + 0xd8, call.stack + 0xdc});
+
+        // The groups of this page: a heading band and a grid of rows (label, Off, On).
         const auto normal = call.call(0x1076bb20, {0, 0xc0, 0, 0});
-        for (unsigned feature = 0; feature < debug_feature_count; ++feature) {
-            call.args({color(0x7b10), call.text(debug_text(s, feature_labels[feature]))});
-            call.call(0x107445a0, {ui, grid, 0, feature, 1, 0, 1, 3});
-            for (unsigned value = 0; value < 2; ++value) {
-                const bool active = bool(*pending_features & (1u << feature)) == bool(value);
-                const auto ink = active ? color(0x7bd0) : normal;
-                call.args({ink, call.text(debug_text(s, value ? DebugText::on : DebugText::off)),
-                    feature_action + feature, value});
-                // Selected cells use the original yellow frame/text; only the
-                // other choice is a button, exactly as in Game Settings.
-                call.call(active ? 0x107445a0 : 0x107444e0,
-                    {ui, grid, value + 1, feature, active ? 0x221u : 1u, active ? ink : 0u, 12, 2});
+        for (const auto& placement : layout.placements[options_page]) {
+            const auto& group = option_groups[placement.group];
+            call.args({2, color(0x7bc8), call.text(text(group.title))});
+            rect_call(0x10744390, box(placement.heading), 0x30, color(0x7bd4), 12);
+            s.memory.copy_in(call.stack + 0xc0, std::vector<std::uint8_t>{58, 21, 21});
+            call.args({0, 1, 0, 0xffffffffu});
+            const auto grid = rect_call(0x107198c0, box(placement.grid), 3, call.stack + 0xc0, group.count);
+            for (unsigned row = 0; row < group.count; ++row) {
+                const auto feature = unsigned(group.features[row]);
+                call.args({color(0x7b10), call.text(debug_text(s, feature_labels[feature]))});
+                call.call(0x107445a0, {ui, grid, 0, row, 1, 0, 1, 3});
+                for (unsigned value = 0; value < 2; ++value) {
+                    const bool active = bool(*pending_features & (1u << feature)) == bool(value);
+                    const auto ink = active ? color(0x7bd0) : normal;
+                    call.args({ink, call.text(debug_text(s, value ? DebugText::on : DebugText::off)),
+                        feature_action + feature, value});
+                    // Selected cells use the original yellow frame/text; only the
+                    // other choice is a button, exactly as in Game Settings.
+                    call.call(active ? 0x107445a0 : 0x107444e0,
+                        {ui, grid, value + 1, row, active ? 0x221u : 1u, active ? ink : 0u, 12, 2});
+                }
             }
         }
     }
@@ -668,6 +739,7 @@ void begin_debugging_options() {
     pending_option = native_debugging_enabled();
     pending_option_changed = false;
     pending_features.reset();
+    options_page = 0;
 }
 
 void append_debugging_option(State& s) {
@@ -705,11 +777,18 @@ bool dispatch_debugging_option(State& s) {
             const auto bit = 1u << (action - feature_action);
             if (s.memory.read<4>(control + 0x48)) *pending_features |= bit;
             else *pending_features &= ~bit;
-        } else if (action == 39) pending_features = 0;
+        } else if ((action == options_previous_action || action == options_next_action) && control &&
+                   (s.memory.read<4>(control + 12) & 2)) {
+            if (action == options_next_action) ++options_page;
+            else if (options_page) --options_page;
+        } else if (action == options_all_on_action && control && (s.memory.read<4>(control + 12) & 2)) {
+            pending_features = all_debug_features;
+        } else if (action == all_off_action) pending_features = 0;
         else if (action == 40 || action == 41) {
             if (action == 41) select_native_debugging_features(*pending_features);
             pending_features.reset();
             pending_option.reset();
+            options_page = 0;
             close_debugging_modal(s);
             // Match the original close result, without rewriting unrelated
             // game preferences: this modal saves only host debug settings.

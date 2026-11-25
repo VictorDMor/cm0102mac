@@ -9,11 +9,14 @@
 #include "code_fragment_adapter.hpp"
 #include "match_replay.hpp"
 #include "platform.hpp"
+#include "adaptive_gui.hpp"
+#include "debug_options_layout.hpp"
 #include <algorithm>
 #include <array>
 #include <fstream>
 #include <iostream>
 #include <memory>
+#include <span>
 #include <stdexcept>
 #include <string>
 #include <tuple>
@@ -310,6 +313,49 @@ void check_fixture_results(const char* path) {
     require(s.memory.copy_out(c.toc(-0x7b90), 0x10) == rng, "Fixture-list results changed RNG");
 }
 }
+// What a well-formed options layout must satisfy: everything inside the canvas, the panel holding its
+// parts, every group once with the rows its grid has room for, and nothing on a page overlapping.
+std::string layout_problem(const DebugOptionsLayout& layout, GuiCanvas canvas, std::span<const unsigned> rows,
+                           const DebugOptionsMetrics& metrics = {}) {
+    const auto inside = [](ScreenRect inner, ScreenRect outer) {
+        return inner.left >= outer.left && inner.top >= outer.top && inner.right <= outer.right && inner.bottom <= outer.bottom;
+    };
+    const auto overlap = [](ScreenRect a, ScreenRect b) {
+        return a.left < b.right && b.left < a.right && a.top < b.bottom && b.top < a.bottom;
+    };
+    const ScreenRect whole{0, 0, canvas.width, canvas.height};
+    if (!inside(layout.panel, whole)) return "panel outside the canvas";
+    for (auto part : {layout.title, layout.body, layout.footer, layout.all_on, layout.all_off})
+        if (!inside(part, layout.panel)) return "part outside the panel";
+    if (layout.pages > 1)
+        for (auto part : {layout.previous, layout.page, layout.next})
+            if (!inside(part, layout.panel) || part.width() <= 0) return "pager outside the panel";
+    if (layout.footer.width() <= 0 || layout.footer.height() <= 0) return "empty footer";
+    std::vector<ScreenRect> fixed{layout.title, layout.body, layout.all_on, layout.all_off, layout.footer};
+    if (layout.pages > 1) fixed.insert(fixed.end(), {layout.previous, layout.page, layout.next});
+    for (unsigned i = 0; i < fixed.size(); ++i)
+        for (unsigned j = i + 1; j < fixed.size(); ++j)
+            if (overlap(fixed[i], fixed[j])) return "controls overlap";
+    if (layout.placements.size() != layout.pages) return "page count";
+    std::vector<unsigned> seen(rows.size());
+    for (const auto& page : layout.placements) {
+        for (unsigned i = 0; i < page.size(); ++i) {
+            const auto& p = page[i];
+            if (p.group >= rows.size()) return "unknown group";
+            ++seen[p.group];
+            if (!inside(p.heading, layout.body) || !inside(p.grid, layout.body)) return "group outside the body";
+            if (p.grid.height() != int(rows[p.group]) * metrics.row || p.heading.height() != metrics.heading)
+                return "row spacing";
+            if (p.heading.bottom != p.grid.top) return "heading apart from its rows";
+            for (unsigned j = i + 1; j < page.size(); ++j)
+                if (overlap(p.heading, page[j].heading) || overlap(p.heading, page[j].grid) ||
+                    overlap(p.grid, page[j].heading) || overlap(p.grid, page[j].grid)) return "groups overlap";
+        }
+    }
+    for (auto count : seen) if (count != 1) return "a group is missing or repeated";
+    return {};
+}
+
 int main(int argc, char** argv) {
     try {
         require(argc == 2 || argc == 3, "Expected a private UI snapshot and optionally a match-day snapshot");
@@ -383,6 +429,31 @@ int main(int argc, char** argv) {
             c.put16(group + 0x14, c.i16(group + 0x14) - 1);
             c.put16(group + 0x16, c.i16(group + 0x16) - 1);
             invoke(0x107735a0, {node});
+        };
+        // The Debugging Options screen pages its switches when the canvas cannot hold them: Previous and Next
+        // are controls of the screen itself (30060 and 30061, present only when the page can move).
+        const auto has_control = [&](unsigned action, unsigned value) {
+            const auto current = page();
+            for (unsigned i = 0; i < c.u16(current + 0x129da6); ++i) {
+                const auto item = current + 0xba864 + i * 0x17c;
+                if (c.u32(item + 8) == action && c.u32(item + 0x48) == value) return true;
+            }
+            return false;
+        };
+        const auto turn = [&](unsigned action) {
+            invoke(0x1033f840, {control(action, 0)});
+            invoke(0x1033d030, {});
+        };
+        const auto first_page = [&] { while (has_control(30060, 0)) turn(30060); };
+        // The control of a switch's On/Off cell, wherever its page is.
+        const auto feature_control = [&](unsigned feature, unsigned value) {
+            first_page();
+            for (unsigned turns = 0; turns < 8; ++turns) {
+                if (has_control(30100 + feature, value)) return control(30100 + feature, value);
+                if (!has_control(30061, 0)) break;
+                turn(30061);
+            }
+            throw std::runtime_error("Switch " + std::to_string(feature) + " is not on any page");
         };
         initialize_native_debugging(false);
         const auto rng = s.memory.copy_out(c.toc(-0x7b90), 0x10);
@@ -534,7 +605,7 @@ int main(int argc, char** argv) {
         const auto cancel_grid = control_grid(control(40, 0));
         require(c.u8(cancel_grid + 0xbb0) == 2, "Footer must use the original two-column grid");
         for (unsigned feature = 0; feature < debug_feature_count; ++feature) {
-            const auto index = control(30100 + feature, 1);
+            const auto index = feature_control(feature, 1);
             invoke(0x1033f840, {index});
             require(native_debugging_features() == 0, "Unconfirmed option leaked");
             invoke(0x1033d030, {});
@@ -544,9 +615,9 @@ int main(int argc, char** argv) {
         require(native_debugging_features() == 0, "Cancel saved changes");
         invoke(0x1033ce70, {4});
         invoke(0x1033d030, {});
-        invoke(0x1033f840, {control(30100 + unsigned(DebugFeature::remove_sale_clause), 1)});
+        invoke(0x1033f840, {feature_control(unsigned(DebugFeature::remove_sale_clause), 1)});
         invoke(0x1033d030, {});
-        invoke(0x1033f840, {control(30100 + unsigned(DebugFeature::force_purchase), 1)});
+        invoke(0x1033f840, {feature_control(unsigned(DebugFeature::force_purchase), 1)});
         invoke(0x1033d030, {});
         invoke(0x1033f840, {control(41, 0)});
         close_modal();
@@ -573,6 +644,122 @@ int main(int argc, char** argv) {
         invoke(0x1033f840, {control(41, 0)});
         close_modal();
         require(native_debugging_features() == 0, "Reset did not disable features");
+        {
+            // The options screen's geometry, then the screen itself at the classic canvas and at wide ones.
+            constexpr std::array<unsigned, 5> group_rows{4, 2, 5, 4, 4};
+            for (const auto canvas : {GuiCanvas{800, 600}, GuiCanvas{1024, 768}, GuiCanvas{1280, 720}, GuiCanvas{1920, 1080},
+                                      GuiCanvas{3200, 1800}}) {
+                const auto layout = debug_options_layout(canvas, group_rows);
+                const auto problem = layout_problem(layout, canvas, group_rows);
+                require(problem.empty(), ("Options layout " + std::to_string(canvas.width) + "x" +
+                                         std::to_string(canvas.height) + ": " + problem).c_str());
+                const bool wide = canvas.width >= 1200;
+                require(layout.columns == (wide ? 2u : 1u), "Options layout column count");
+                require(layout.pages == (layout.columns == 1 ? 2u : 1u), "Options layout page count");
+            }
+            // The check must fail when the layout is wrong: a mutant with two groups on top of each other,
+            // one with a missing group and one whose rows are squeezed.
+            {
+                auto layout = debug_options_layout(GuiCanvas{1920, 1080}, group_rows);
+                require(layout_problem(layout, GuiCanvas{1920, 1080}, group_rows).empty(), "Unmutated layout");
+                auto overlapping = layout;
+                overlapping.placements[0][1].grid = overlapping.placements[0][0].grid;
+                require(!layout_problem(overlapping, GuiCanvas{1920, 1080}, group_rows).empty(), "Overlap mutant accepted");
+                auto missing = layout;
+                missing.placements[0].pop_back();
+                require(!layout_problem(missing, GuiCanvas{1920, 1080}, group_rows).empty(), "Missing-group mutant accepted");
+                auto squeezed = layout;
+                squeezed.placements[0][0].grid.bottom -= 10;
+                require(!layout_problem(squeezed, GuiCanvas{1920, 1080}, group_rows).empty(), "Squeezed-row mutant accepted");
+                auto outside = layout;
+                outside.panel.right = 5000;
+                require(!layout_problem(outside, GuiCanvas{1920, 1080}, group_rows).empty(), "Outside-panel mutant accepted");
+            }
+            static GuiCanvas probed{800, 600};
+            adaptive_gui_canvas_probe = [](const State&) { return probed; };
+            struct DropProbe { ~DropProbe() { adaptive_gui_canvas_probe = nullptr; } } drop_probe;
+            const auto open_options = [&] {
+                invoke(0x1033ce70, {4});
+                invoke(0x1033d030, {});
+            };
+            const auto finish = [&](unsigned action) {
+                invoke(0x1033f840, {control(action, 0)});
+                close_modal();
+            };
+            for (const auto canvas : {GuiCanvas{800, 600}, GuiCanvas{1280, 720}, GuiCanvas{1920, 1080}}) {
+                probed = canvas;
+                const bool classic = canvas.width == 800;
+                select_native_debugging_features(0);
+                open_options();
+                // Every switch has an Off and an On cell on some page, and the pages are exactly what the layout said.
+                first_page();
+                unsigned reachable = 0, pages = 1;
+                for (;; ++pages) {
+                    for (unsigned feature = 0; feature < debug_feature_count; ++feature)
+                        if (has_control(30100 + feature, 0) || has_control(30100 + feature, 1)) {
+                            // The selected choice is a plain cell; only the other one is a control.
+                            require(has_control(30100 + feature, 0) != has_control(30100 + feature, 1), "A switch lacks its choice");
+                            require(!(reachable & (1u << feature)), "A switch is offered twice");
+                            reachable |= 1u << feature;
+                        }
+                    if (!has_control(30061, 0)) break;
+                    turn(30061);
+                }
+                require(reachable == all_debug_features, "Some debugging switch is not reachable");
+                require(pages == (classic ? 2u : 1u), "Options page count at this canvas");
+                require(has_control(30062, 0) && has_control(39, 0) && has_control(40, 0) && has_control(41, 0),
+                        "All On, All Off, Cancel or OK missing");
+                require(has_control(30061, 0) == false && (classic ? has_control(30060, 0) : !has_control(30060, 0)),
+                        "Pager controls at the last page");
+                // Every switch toggles exactly its own feature, and only OK commits it.
+                for (unsigned feature = 0; feature < debug_feature_count; ++feature) {
+                    invoke(0x1033f840, {feature_control(feature, 1)});
+                    invoke(0x1033d030, {});
+                    require(native_debugging_features() == 0, "A pending choice leaked before OK");
+                    first_page();
+                    finish(40);
+                    require(native_debugging_features() == 0, "Cancel committed a choice");
+                    open_options();
+                    invoke(0x1033f840, {feature_control(feature, 1)});
+                    invoke(0x1033d030, {});
+                    first_page();
+                    finish(41);
+                    require(native_debugging_features() == (1u << feature), "A switch toggled the wrong feature");
+                    // Off again.
+                    open_options();
+                    invoke(0x1033f840, {feature_control(feature, 0)});
+                    invoke(0x1033d030, {});
+                    first_page();
+                    finish(41);
+                    require(native_debugging_features() == 0, "Off did not turn the feature off");
+                    open_options();
+                }
+                // All On and All Off act on the pending choice.
+                invoke(0x1033f840, {control(30062, 0)});
+                invoke(0x1033d030, {});
+                require(native_debugging_features() == 0, "All On committed without OK");
+                first_page();
+                finish(41);
+                require(native_debugging_features() == all_debug_features, "All On did not enable every switch");
+                open_options();
+                invoke(0x1033f840, {control(39, 0)});
+                invoke(0x1033d030, {});
+                first_page();
+                finish(41);
+                require(native_debugging_features() == 0, "All Off did not disable every switch");
+                // The panel and every switch stay inside the canvas.
+                open_options();
+                for (unsigned i = 0; i < c.u16(page() + 0x129da6); ++i) {
+                    const auto item = item_address(i);
+                    if (c.u32(item + 8) < 30100 || c.u32(item + 8) >= 30100 + debug_feature_count) continue;
+                    require(c.i32(item + 0x10) >= 0 && c.i32(item + 0x18) <= int(canvas.width) &&
+                            c.i32(item + 0x14) >= 0 && c.i32(item + 0x1c) <= int(canvas.height),
+                            "A switch cell lies outside the canvas");
+                }
+                first_page();
+                finish(40);
+            }
+        }
         for (unsigned feature = 0; feature < debug_feature_count; ++feature) {
             select_native_debugging_features(1u << feature);
             for (unsigned other = 0; other < debug_feature_count; ++other)
