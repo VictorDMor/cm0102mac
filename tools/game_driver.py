@@ -141,6 +141,7 @@ def main():
     prepare.add_argument("name")
     prepare.add_argument("--save", type=Path, action="append", default=[])
     prepare.add_argument("--season-reference-days", type=int)
+    prepare.add_argument("--app", type=Path, help="the app to copy (default: the current build's)")
     launch = commands.add_parser("launch")
     launch.add_argument("name")
     launch.add_argument("--capture-launch", metavar="CAPTURE", help="record the whole run as a session capture")
@@ -165,6 +166,8 @@ def main():
             command += ["--save", str(save)]
         if args.season_reference_days:
             command += ["--season-reference-days", str(args.season_reference_days)]
+        if args.app:
+            command += ["--app", str(args.app)]
         subprocess.run(command, check=True, stdout=subprocess.DEVNULL)
         print(run_directory(args.name))
         return

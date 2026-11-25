@@ -142,31 +142,41 @@ and performance is **not benchmarked**. The full C++23 port remains active.
 `tools/dev.sh pgo` refreshes a Clang profile that `tools/dev.sh build` then uses for the game libraries (`cm_aot`
 and what it links), `cm-world-replay` and the app. Everything lives in `.local/current/pgo/` (never committed):
 `cm.profdata` and `cm.profdata.ok`, whose first line is the compiler the profile was written for and whose second
-says when, at which commit and on which captures.
+says when, at which commit and on which runs.
 
-- `tools/dev.sh pgo` runs the steps `select`, `instrument`, `train`, `merge` and a normal build (about 30 minutes in
-  all, mostly the two full builds); any step can be run alone and an interrupted `instrument` resumes, as it is an
-  incremental build in the same build directory.
-  - `select` replays the four world captures with `--profile` and lists the busiest generated pages
-    (`tools/pgo_pages.py`, 200 pages or 98% of the samples) in `pgo/pages.txt`. Instrumenting all 1,922 pages doubles
-    their code and the executable no longer links: arm64 branches reach 128 MB, the linker adds one island hop, so
-    about 250 MB of code is the limit (the app is 215 MB without instrumentation; the instrumented replay tool is
-    226 MB). The other pages keep their normal code in the training build and get none from the profile.
+- `tools/dev.sh pgo` runs the steps `select`, `instrument`, `train`, `merge` and a normal build (about 45 minutes in
+  all: the two full builds and the game runs); any step can be run alone and an interrupted `instrument` resumes, as
+  it is an incremental build in the same build directory. Since 2026-11-25 the training input is the game itself,
+  not replays: replays could not run the parallel modes, the screens or the host UI, and their captures were lost
+  with `.local` on 2026-11-24.
+  - The workload is `tools/pgo_train.py`: isolated driven copies of the app (`tools/game_driver.py`), each with one
+    benchmark save of `.local/benchmarks/saves`. `holiday` is the multi-league career on holiday to day 244 with the
+    matches on 8 workers (the daily world, background matches, the shortlist scans and their workers, the holiday
+    screens); `season` continues the multi-league career of 14 July 2001 to day 212, playing the human's matches
+    (best eleven, Z) and answering the screens on the way. `heldout` (another career, January 2002) is never trained
+    on: it is the timing input that shows a profile is not fitted to its training. The same script times a build
+    (`--app`, `--repeat`, one line per scenario). `CM_PGO_SCENARIOS` picks the training scenarios.
+  - `select` runs the workload on the normal app under macOS `sample` and lists the generated pages whose own code
+    takes the most samples on any thread (`tools/pgo_pages.py`, 200 pages or 98%; 200 pages gave 96.7% on
+    2026-11-25: most of the time is now in handwritten C++, always instrumented). Instrumenting all 1,922 pages
+    doubles their code and the executable no longer links: arm64 branches reach 128 MB, the linker adds one island
+    hop, so about 250 MB of code is the limit. The other pages keep their normal code in the training build and get
+    none from the profile.
   - `instrument` reconfigures with `CM_PGO_GENERATE=ON` (IR-level `-fprofile-generate`, chosen over front-end
-    `-fprofile-instr-generate` because it counts fewer places and optimises better) and builds only
-    `cm-world-replay`, `cm-match-replay` and `cm-match-benchmark`.
-  - `train` runs season-day, same-save-continue, save-info and database with `--timing` (the mode the game runs in)
-    and 100 of the 600-advance intervals of each `.local/benchmarks/match` capture through `cm-match-benchmark`
-    (a harness in `.local/benchmarks/harness`; one interval is only 3.5 million instructions);
-    `CM_PGO_TRAIN="day week"` trains on a subset.
+    `-fprofile-instr-generate` because it counts fewer places and optimises better) and builds the app and
+    `cm-world-replay`.
+  - `train` runs the workload on the instrumented app with `LLVM_PROFILE_FILE=<raw>/<scenario>-%c%p.profraw`: `%c`
+    is LLVM's continuous mode, the counters mapped onto the file, so the driver's SIGTERM loses nothing and every
+    thread's counts are there (the counters are not atomic; races lose an occasional count).
   - `merge` runs `llvm-profdata merge -sparse` and deletes the raw files.
 - `tools/dev.sh build` passes `-DCM_PGO_PROFILE=<cm.profdata>` while the marker names the compiler in use and
   switches `CM_PGO_GENERATE` off whatever the tree held, so an instrumented tree never survives a build;
   `tools/dev.sh install` refuses one. `CM_PGO=off tools/dev.sh build` ignores the profile;
   `tools/dev.sh pgo clear` deletes it.
 - The profile is not tied to the sources. Clang drops the profile of a function whose control flow changed (the
-  warnings about unprofiled, missing and out-of-date functions are off, so the build stays quiet) and optimises it
+  warnings about unprofiled, missing and out-of-date functions are off, and so is -Wbackend-plugin, which an inline
+  function instantiated in both Objective-C++ and C++ files raises; the build stays quiet) and optimises it
   as before; refresh the profile after larger changes. A new profile of the same path rebuilds every object.
 - Results do not change: the options add no floating-point flag (`-ffp-contract=off` stays on the libraries,
-  nothing like `-ffast-math`); check a new profile with the strict replays (same instruction counts) and the
-  paired timing of the Performance row in CLAUDE.md.
+  nothing like `-ffast-math`); check a new profile with a strict replay (same state digest and instruction count)
+  and alternating pairs of `tools/pgo_train.py holiday heldout --app ...` against the previous app.

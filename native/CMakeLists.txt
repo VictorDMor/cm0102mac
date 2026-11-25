@@ -49,7 +49,7 @@ target_sources(cm_aot PRIVATE startup_layout.cpp)
 target_sources(cm_aot PRIVATE load_browser_layout.cpp)
 target_sources(cm_aot PRIVATE transfer_status_layout.cpp previous_offers_layout.cpp message_screen_layout.cpp board_confidence_layout.cpp manager_statistics_layout.cpp world_rankings_layout.cpp uefa_coefficients_layout.cpp hall_of_fame_layout.cpp manager_status_layout.cpp job_information_layout.cpp holiday_layout.cpp bid_rejection_layout.cpp friendly_layout.cpp info_pages_layout.cpp text_entry_layout.cpp disciplinary_layout.cpp head_to_head_layout.cpp paged_table_layout.cpp tabbed_page_layout.cpp centered_dialog_layout.cpp squad_numbers_layout.cpp)
 target_link_libraries(cm_aot PRIVATE cm_form_layout "-framework Accelerate")
-target_sources(cm_aot PRIVATE new_screens.cpp settings_toggle.cpp)
+target_sources(cm_aot PRIVATE new_screens.cpp settings_toggle.cpp save_catalog.cpp save_browser.cpp)
 target_sources(cm_aot PRIVATE quick_save_transaction.cpp)
 target_sources(cm_aot PRIVATE match_speed.cpp)
 target_sources(cm_aot PRIVATE match_debugging.cpp national_callup.cpp debug_underdogs.cpp debug_match_results.cpp debug_club_results_storage.cpp)
@@ -5421,7 +5421,9 @@ endif()
 #                        flow changed since the training are ignored, so a stale profile still builds; the
 #                        warnings about unprofiled, missing and out-of-date functions are off for that reason
 #                        (the mismatch one is a backend error under -Werror, and `main` of every training
-#                        executable shares one profile name, so even a fresh profile triggers it).
+#                        executable shares one profile name, so even a fresh profile triggers it). Trained on the
+#                        app, an inline function instantiated in Objective-C++ and C++ files (std::string in
+#                        ui_bridge.mm) gets value sites that differ between them: -Wbackend-plugin, off too.
 # Floating-point flags are untouched (-ffp-contract=off stays where it is, no -ffast-math).
 option(CM_PGO_GENERATE "Instrument the game libraries and replay tools to record a PGO profile" OFF)
 set(CM_PGO_PROFILE "" CACHE FILEPATH "Merged .profdata to optimise the game libraries and replay tools with")
@@ -5445,6 +5447,7 @@ if(CM_PGO_GENERATE OR CM_PGO_PROFILE)
         else()
             target_compile_options(${target} PRIVATE "-fprofile-use=${CM_PGO_PROFILE}"
                 -Wno-profile-instr-unprofiled -Wno-profile-instr-out-of-date -Wno-profile-instr-missing
+                -Wno-backend-plugin
                 "SHELL:-mllvm -no-pgo-warn-mismatch" "SHELL:-mllvm -no-pgo-warn-mismatch-comdat-weak")
         endif()
     endforeach()

@@ -93,53 +93,26 @@ take_build_lock() {
     perl -e 'use Fcntl ":flock"; open(my $f, ">&=", 9) or die; flock($f, LOCK_EX) or die'
 }
 
-# What the training runs replay: name, then the command (CM_PGO_TRAIN="day week" trains on a subset).
-# The match intervals run through cm-match-benchmark, which writes its first result next to its input, so
-# it gets a private directory with a link to the snapshot.
-pgo_train_run() {
-    local name="$1" log="$pgo_dir/log/$1.log"; shift
-    if [[ -n "${CM_PGO_TRAIN:-}" && " $CM_PGO_TRAIN " != *" $name "* ]]; then return 0; fi
-    echo "PGO training: $name"
-    LLVM_PROFILE_FILE="$pgo_dir/raw/$name.profraw" "$@" >"$log" 2>&1 || { tail -c 600 "$log" >&2; echo "training run $name failed" >&2; exit 1; }
-}
-pgo_train_match() {
-    local label="$1" root="$pgo_dir/match-root" bench="$current/build/cm-match-benchmark"
-    [[ -x "$bench" && -f "$bench_dir/match/$label/initial.snapshot" ]] || { echo "PGO training: match $label skipped (no benchmark binary or capture)"; return 0; }
-    if [[ -n "${CM_PGO_TRAIN:-}" && " $CM_PGO_TRAIN " != *" match$label "* ]]; then return 0; fi
-    rm -rf "$root"; mkdir -p "$root/$label"
-    ln -s "$bench_dir/match/$label/initial.snapshot" "$root/$label/initial.snapshot"
-    cp "$bench_dir/match/$label/match.txt" "$root/$label/match.txt"
-    echo "PGO training: match$label"
-    # 100 intervals: one is only ~3.5 million instructions against 5,000 million for the day.
-    for _ in $(seq 100); do echo run; done | LLVM_PROFILE_FILE="$pgo_dir/raw/match$label.profraw" "$bench" - - "$root" "$label" serve pgo \
-        >"$pgo_dir/log/match$label.log" 2>&1 || { tail -c 600 "$pgo_dir/log/match$label.log" >&2; echo "training run match$label failed" >&2; exit 1; }
-    rm -rf "$root"
-}
-
 pgo_command() {
-    local step="${1:-all}" bench_dir="$root/.local/benchmarks"
+    local step="${1:-all}"
     case "$step" in
     all)
         for s in select instrument train merge; do "$0" pgo "$s"; done
         "$0" build
         ;;
     select)
-        # The generated pages the training builds instrument: the busiest ones in the guest samples of the
-        # normal build (tools/pgo_pages.py says why not all). Rewritten only when the list changes.
+        # The generated pages the training builds instrument (tools/pgo_pages.py says why not all): the busiest
+        # in the game's own workload, sampled on the normal app (tools/pgo_train.py: holiday and season, every
+        # thread, workers included). Rewritten only when the list changes.
         take_build_lock
         mkdir -p "$pgo_dir/log"
         reconfigure
         sync_pgo_config
-        cmake --build "$build" -j "$jobs" --target cm-world-replay
-        export CM_ENGLISH_RULES_ORIGINAL=1
-        samples=()
-        for c in world/season-day world/same-save-continue ui/save-info world/database; do
-            out="$pgo_dir/log/select-$(basename "$c").samples"
-            "$build/cm-world-replay" "$bench_dir/$c" 1 --timing --profile "$out" >/dev/null
-            samples+=("$out")
-        done
-        python3 -I "$root/tools/pgo_pages.py" "$pgo_dir/pages.txt.new" "$generated" "${samples[@]}"
-        rm -f "${samples[@]}"
+        cmake --build "$build" -j "$jobs" --target cm-native-prototype
+        rm -rf "$pgo_dir/log/samples"
+        python3 "$root/tools/pgo_train.py" ${CM_PGO_SCENARIOS:-holiday season} --sample-dir "$pgo_dir/log/samples"
+        python3 -I "$root/tools/pgo_pages.py" "$pgo_dir/pages.txt.new" "$generated" "$pgo_dir/log/samples"/*.sample.txt
+        rm -rf "$pgo_dir/log/samples"
         if cmp -s "$pgo_dir/pages.txt" "$pgo_dir/pages.txt.new"; then rm "$pgo_dir/pages.txt.new"; else mv "$pgo_dir/pages.txt.new" "$pgo_dir/pages.txt"; fi
         ;;
     instrument)
@@ -148,24 +121,21 @@ pgo_command() {
         reconfigure
         [[ -f "$pgo_dir/pages.txt" ]] || { echo "Run: tools/dev.sh pgo select" >&2; exit 1; }
         cmake -DCM_PGO_GENERATE=ON -DCM_PGO_PROFILE= "-DCM_PGO_PAGES=$pgo_dir/pages.txt" "$build" >/dev/null
-        cmake --build "$build" -j "$jobs" --target cm-world-replay cm-match-replay cm-match-benchmark
+        cmake --build "$build" -j "$jobs" --target cm-native-prototype cm-world-replay
         mkdir -p "$pgo_dir"; touch "$pgo_dir/instrumented"
         df -h / | tail -1
         ;;
     train)
         take_build_lock
         [[ -f "$pgo_dir/instrumented" && "$(cache_value CM_PGO_GENERATE)" == ON ]] || { echo "Run: tools/dev.sh pgo instrument" >&2; exit 1; }
-        if [[ -z "${CM_PGO_TRAIN:-}" ]]; then rm -rf "$pgo_dir/raw" "$pgo_dir/log"; fi
+        rm -rf "$pgo_dir/raw" "$pgo_dir/log"
         mkdir -p "$pgo_dir/raw" "$pgo_dir/log"
-        replay="$build/cm-world-replay"
-        # --timing is the mode the game runs in; the captures of this release need the English rules original.
-        export CM_ENGLISH_RULES_ORIGINAL=1
-        pgo_train_run day "$replay" "$bench_dir/world/season-day" 1 --timing
-        pgo_train_run week "$replay" "$bench_dir/world/same-save-continue" 1 --timing
-        pgo_train_run save-info "$replay" "$bench_dir/ui/save-info" 1 --timing
-        pgo_train_run database "$replay" "$bench_dir/world/database" 1 --timing
-        pgo_train_match 677
-        pgo_train_match 2262
+        # The game's own workload in driven copies of the instrumented app (tools/pgo_train.py): the counters
+        # are written in LLVM's continuous mode, so every thread's work counts and the driver's stop loses
+        # nothing. CM_PGO_SCENARIOS picks scenarios (default: holiday season).
+        python3 "$root/tools/pgo_train.py" ${CM_PGO_SCENARIOS:-holiday season} --profile-dir "$pgo_dir/raw" \
+            >"$pgo_dir/log/game.log" 2>&1 || { tail -c 600 "$pgo_dir/log/game.log" >&2; echo "game training failed" >&2; exit 1; }
+        cat "$pgo_dir/log/game.log"
         ls "$pgo_dir/raw"/*.profraw >/dev/null
         du -sh "$pgo_dir/raw"
         ;;
