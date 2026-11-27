@@ -1,4 +1,5 @@
 #include "file_screens_detail.hpp"
+#include "save_browser.hpp"
 
 namespace cm::aot::file_screens {
 using namespace detail;
@@ -127,6 +128,11 @@ void render_file_dialog(Cpu& c) {
     p.call(set_screen_title, 0x100ee36c, {screens, prompt_or_current});
     prompt_or_current = screens + 0x2c58;
     heading_or_windows = screens + 0x24;
+    // New Screens: the saved-game browser takes the place of the classic grids.
+    if (saved_game_browser(c)) {
+        build_saved_game_browser(c, f, {screens, label, pool, folder, extension, filter, name_or_list});
+        return;
+    }
     p.stack(f.base(), {0, 2, 0, none});
     back_colour_or_rows = p.call(add_table, 0x100ee3bc, {window(c, screens), 0xbe, 0xc3, 0x2bc, 0xe7, 2, wide_columns, 1});
     p.call(localized_text, 0x100ee3cc, {label, pool + text::file_label});
@@ -344,12 +350,19 @@ void file_dialog_action(Cpu& c, std::uint32_t control) {
         result(c, std::uint32_t(redraw));
         return;
     }
-    if (compare(c, action, pick_action) == 0) {
+    if (compare(c, action, pick_action) == 0 || action == saved_game_pick_action) {
         const auto name = p.value(0x100eef00, screens, v_name);
         held = name;
         const auto id = std::int16_t(control);
         compare(c, id, -1);
-        const auto chosen = id != -1 ? window(c, screens) + 0xc0000 + std::uint32_t(std::int32_t(id)) * 0x17c - 0x5724 : 0u;
+        auto chosen = id != -1 ? window(c, screens) + 0xc0000 + std::uint32_t(std::int32_t(id)) * 0x17c - 0x5724 : 0u;
+        if (action == saved_game_pick_action) {
+            chosen = saved_game_pick_name(c, std::uint32_t(control), f.at(0x370));
+            if (!chosen) {
+                result(c, std::uint32_t(stay));
+                return;
+            }
+        }
         p.call(string_copy_limited, 0x100eef40, {name, chosen, 0x1f});
         c.put8(name + 0x1e, 0);
         result(c, std::uint32_t(redraw));
