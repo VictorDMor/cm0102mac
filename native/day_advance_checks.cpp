@@ -39,7 +39,28 @@ void until(State& s, std::uint32_t target) {
             if (std::string(error.what()) != "Native instruction budget exhausted") throw;
         }
     }
-    require(s.pc == target, "Original day-advance arithmetic did not reach the expected continuation");
+    require(s.pc == target, "Day advance did not reach the expected continuation");
+}
+
+void check_optional_competition_stats(const char* directory) {
+    constexpr std::uint32_t lookup = 0x10122b68, no_form = 0x10122cfc;
+    constexpr std::uint32_t stats = fixture + 0x200, form = fixture + 0x800;
+    const auto exercise = [&](std::uint32_t object) {
+        auto s = setup(directory, 0, 0);
+        s->memory.write<4>(stats + 0x5cc, form);
+        s->memory.write<1>(form + 4, 10);  // The recorded form takes the existing default branch.
+        s->wr<4>(12, object);
+        s->wr<4>(13 * 4, 10);  // Default already assigned before the optional lookup.
+        s->pc = lookup;
+        const auto rng = s->memory.copy_out(fixture, 8);
+        until(*s, no_form);
+        require(s->r<4>(12) == (object ? form : 0), "Daily competition stats returned the wrong form");
+        require(s->r<4>(13 * 4) == 10 && s->r<4>(4) == 0x700fff00,
+                "Daily competition stats changed the default or stack");
+        require(s->memory.copy_out(fixture, 8) == rng, "Daily competition stats consumed RNG");
+    };
+    exercise(0);
+    exercise(stats);
 }
 }
 int main(int argc, char** argv) {
@@ -88,7 +109,9 @@ int main(int argc, char** argv) {
         try { (void)divide_signed<4>(42772, 0); }
         catch (const std::runtime_error& error) { rejected = std::string(error.what()) == "Signed division by zero in translated code"; }
         require(rejected, "Unaudited divisions by zero must still stop for investigation");
-        std::cout << cases << " original day-advance arithmetic, quotient-independence, and RNG checks passed\n";
+        check_optional_competition_stats(argv[1]);
+        std::cout << cases << " original day-advance arithmetic, quotient-independence, and RNG checks passed\n"
+                  << "Daily competition stats: missing object and present form passed\n";
         return 0;
     } catch (const std::exception& error) { std::cerr << error.what() << '\n'; return 1; }
 }

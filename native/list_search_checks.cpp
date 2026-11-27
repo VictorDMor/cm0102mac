@@ -1,4 +1,12 @@
 #include "list_search.hpp"
+#include "graph_carbon.hpp"
+#include "match_day_driver.hpp"
+#include "shortlist_manager_candidates_scan.hpp"
+#include "shortlist_worker_access.hpp"
+#include <chrono>
+#include <mutex>
+#include <set>
+#include <thread>
 #include "manager_manager_adapter.hpp"
 #include "semantic_io_checks.hpp"
 #include <functional>
@@ -76,6 +84,104 @@ std::string compare(const State& program, const Case& c, bool expect_native) {
         std::to_string(original->executed) + " vs " + std::to_string(modern->executed));
     return actual;
 }
+// Observe the actual cursor walk under both the slow native and generated
+// dispatch paths. Tracking ownership across several writes detects overlapping
+// walks, even if both candidates happen to get the right verdict.
+struct CursorWalks final : MemoryObserver {
+    CursorWalks() { restrict_write_notifications(list + cursor_offset, list + cursor_offset + 4); }
+    void mapped(std::uint32_t, std::uint64_t) override {}
+    void cleared(std::uint32_t, std::uint64_t) override {}
+    void written(std::uint32_t address, const std::uint8_t* value, std::size_t size) override {
+        if (address != list + cursor_offset || size != 4) return;
+        const auto thread = std::this_thread::get_id();
+        bool opened = false;
+        {
+            const std::lock_guard lock(mutex);
+            const bool restored = value[0] == 0x5a && value[1] == 0x5a &&
+                                  value[2] == 0x5a && value[3] == 0x5a;
+            if (owner != std::thread::id{} && owner != thread) ++collisions;
+            if (restored) {
+                owner = {};
+                ++completed;
+            } else if (owner == std::thread::id{}) {
+                owner = thread;
+                participants.insert(thread);
+                opened = true;
+            }
+        }
+        if (opened) std::this_thread::sleep_for(std::chrono::microseconds(50));
+    }
+    std::mutex mutex;
+    std::thread::id owner;
+    std::set<std::thread::id> participants;
+    unsigned collisions = 0, completed = 0;
+};
+
+void parallel_candidates(const State& program) {
+    namespace filter = cm::aot::shortlist_manager::candidates;
+    namespace workers = cm::aot::shortlist_workers;
+    auto s = setup(program, {"shared staff list", 6, {21, 22, 23, 24, 25, 1}, 1});
+    constexpr std::uint32_t manager = fixture + 0x2000, entries = manager + 0x1000;
+    constexpr std::uint32_t person = manager + 0x200, entry_count = 256;
+    s->memory.map(manager, 0x2000);
+    s->memory.clear(manager, 0x2000);
+    cm::aot::guest::Cpu c(*s);
+    const auto person_table = manager + 0x104, listing_cell = manager + 0x108;
+    c.put32(person_table, person - 0x70);
+    c.put32(c.r(2) + std::uint32_t(cm::aot::shortlist_manager::detail::slot::persons), person_table);
+    const auto count = manager + 0x10;
+    c.put32(count, 50);
+    c.put32(c.r(2) + std::uint32_t(cm::aot::shortlist_manager::detail::slot::person_count), count);
+    c.put32(listing_cell, container);
+    c.put32(c.r(2) + std::uint32_t(filter::slot::listings), listing_cell);
+    c.put32(person, 1);
+    c.put32(person + 0x1c, person + 0x70);
+    c.put32(manager + 0x18, entries);
+    c.put32(manager + 0x98, entry_count);
+    for (std::uint32_t i = 0; i < entry_count; ++i) c.put32(entries + 12 * i, 1);
+
+    setenv("CM_SHORTLIST_PARALLEL", "1", 1);
+    setenv("CM_MATCH_WORKERS", "2", 1);
+    const auto prior_order = match_day_order();
+    set_match_day_order(MatchDayOrder::parallel);
+    CursorWalks trace;
+    s->memory.observer = &trace;
+    // The candidate fixture returns immediately for staff already in the
+    // manager's list. Every entry still goes through the actual worker pool.
+    {
+        cm::aot::guest::Frame frame(c, filter::entry, 0x1b0, {.first_gpr = 13, .gpr_offset = -0x6c,
+                                                                  .first_fpr = 29});
+        c.put8(frame.at(filter::local::category), 0);
+        for (const auto field : {filter::local::category_offset, filter::local::lists_offset,
+                                 filter::local::last_category, filter::local::excluded})
+            c.put32(frame.at(field), 0);
+        filter::Scan scan(c, frame, 0, 0);
+        scan.manager = manager;
+        scan.salt_slot = c.toc(cm::aot::shortlist_manager::detail::slot::random_salt);
+        scan.cursor_slot = c.toc(cm::aot::shortlist_manager::detail::slot::random_cursor);
+        require(scan.judge_on_workers(), "The shortlist did not run on its workers");
+        require(scan.verdicts.size() == entry_count, "The workers lost entries");
+        for (const auto& verdict : scan.verdicts)
+            require(!verdict.eligible, "A worker accepted a staff member already on the list");
+    }
+    set_match_day_order(prior_order);
+    s->memory.observer = nullptr;
+    require(trace.participants.size() == 2 && trace.completed == entry_count,
+            "The two workers did not both traverse the shared list");
+    require(trace.collisions == 0 && c.u32(list + cursor_offset) == 0x5a5a5a5a,
+            "Concurrent workers corrupted the manager list cursor");
+
+    workers::SharedRecords records;
+    const workers::RecordScope scope(records);
+    bool passed = false;
+    try {
+        cm::aot::graph_carbon::assertion_box(c, 0, 0, 0);
+    } catch (const std::runtime_error& error) {
+        passed = std::string_view(error.what()) == "Candidate evaluation reached a game assertion";
+    }
+    require(passed, "A shortlist worker's assertion reached the guest dialog");
+}
+
 }
 int main(int argc, char** argv) {
     try {
@@ -166,6 +272,7 @@ int main(int argc, char** argv) {
             require(a->executed == b->executed, "control count");
         } catch (const std::runtime_error&) { caught = true; }
         require(caught, "The comparison did not notice a different search result");
+        parallel_candidates(*program);
         std::cout << cases << " list-search cases identical to the original; error reports left to the original; control caught\n";
         return 0;
     } catch (const std::exception& e) { std::cerr << e.what() << '\n'; return 1; }

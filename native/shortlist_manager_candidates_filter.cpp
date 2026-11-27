@@ -1,4 +1,5 @@
 #include "shortlist_manager_candidates_scan.hpp"
+#include "shortlist_worker_access.hpp"
 #include "routine_check.hpp"
 #include "guest_register_frame.hpp"
 #include "guest_frame_observation.hpp"
@@ -13,6 +14,8 @@
 namespace cm::aot::shortlist_manager::candidates {
 
 namespace {
+using shortlist_workers::SharedRecords;
+
 // The flag-clear path of 0x103f43b0 only constructs and destroys a local
 // empty list. Publish both guest frames and the exact return state.
 bool try_empty_transfer_filter(Cpu& c, std::uint32_t transfers, std::uint32_t person) {
@@ -111,9 +114,11 @@ bool Scan::eligible(std::uint32_t entry_address) {
     if (compare(c, p.national_job(), 5) == 0) return false;
     if (nonzero_logical(c, p.non_player())) {
         const auto listings = c.u32(c.toc(slot::listings));
-        if (nonzero_logical(c, listings) &&
-            nonzero(c, std::int8_t(program.call(0x101b1620, 0x1035f368, {listings, person}))))
-            return false;
+        if (nonzero_logical(c, listings)) {
+            const auto lock = shortlist_workers::lock(&SharedRecords::manager_list);
+            if (nonzero(c, std::int8_t(program.call(0x101b1620, 0x1035f368, {listings, person}))))
+                return false;
+        }
     }
     if (nonzero(c, std::int8_t(player_row))) {
         if (!player_checks(entry_address)) return false;
@@ -225,17 +230,22 @@ bool Scan::common_checks() {
     if (nonzero(c, std::int32_t(meta(p.id()) >> 4)) &&
         nonzero(c, std::int8_t(program.call(0x10362d70, 0x1035f71c, {manager, person, club_address}))))
         return false;
-    if (!nonzero(c, std::int8_t(program.call(0x1036f590, 0x1035f738, {manager, person, p.club(), club_address}))))
-        return false;
-    if (nonzero(c, std::int8_t(program.call(0x103ecef0, 0x1035f758, {c.u32(c.toc(slot::transfers)), person, club_address, 1})))) {
-        const auto mode = Row::category(row.flags());
-        if (compare_logical(c, mode, 1) != 0 && compare_logical(c, mode, 2) != 0 && compare_logical(c, mode, 3) != 0)
+    {
+        // These calls share transfer lists and can read the same offer byte
+        // the status query below updates.
+        const auto lock = shortlist_workers::lock(&SharedRecords::transfers);
+        if (!nonzero(c, std::int8_t(program.call(0x1036f590, 0x1035f738, {manager, person, p.club(), club_address}))))
             return false;
-    }
-    if (nonzero(c, std::int32_t(Row::loan(row.flags())))) {
-        if (!nonzero_logical(c, p.club())) return false;
-        if (!nonzero(c, std::int8_t(program.call(0x103fa290, 0x1035f7b0, {c.u32(c.toc(slot::transfers)), club_address, person, 0}))))
-            return false;
+        if (nonzero(c, std::int8_t(program.call(0x103ecef0, 0x1035f758, {c.u32(c.toc(slot::transfers)), person, club_address, 1})))) {
+            const auto mode = Row::category(row.flags());
+            if (compare_logical(c, mode, 1) != 0 && compare_logical(c, mode, 2) != 0 && compare_logical(c, mode, 3) != 0)
+                return false;
+        }
+        if (nonzero(c, std::int32_t(Row::loan(row.flags())))) {
+            if (!nonzero_logical(c, p.club())) return false;
+            if (!nonzero(c, std::int8_t(program.call(0x103fa290, 0x1035f7b0, {c.u32(c.toc(slot::transfers)), club_address, person, 0}))))
+                return false;
+        }
     }
     if (nonzero(c, std::int32_t(Row::loan(row.flags()))) && nonzero_logical(c, contract_club(person, 0x1035f7d0))) {
         const auto seller = contract_club(person, 0x1035f810);
@@ -245,8 +255,11 @@ bool Scan::common_checks() {
         }
     }
     const auto transfers = c.u32(c.toc(slot::transfers));
-    const auto status = try_empty_transfer_filter(c, transfers, person) ? 0 :
-        std::int8_t(program.call(0x103f43b0, 0x1035f884, {transfers, person, 0}));
+    const auto status = [&] {
+        const auto lock = shortlist_workers::lock(&SharedRecords::transfers);
+        return try_empty_transfer_filter(c, transfers, person) ? 0 :
+            std::int8_t(program.call(0x103f43b0, 0x1035f884, {transfers, person, 0}));
+    }();
     if (nonzero(c, status)) return false;
     if (nonzero(c, std::int8_t(c.u8(at(local::human_talks))))) return true;
     return sampled();

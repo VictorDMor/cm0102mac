@@ -1251,7 +1251,7 @@ PROFILE_OFFER_READS = {
 # Instructions generate_page lowers specially (beyond owner hooks and
 # quotient-free divisions); a leaf containing one is never inlined.
 SPECIAL_LOWERINGS = frozenset({
-    0x1028d558, 0x10779ed8, 0x101195e8, 0x1071a828, 0x101fefc8, 0x10774c24, 0x10131c00, 0x104a8518,
+    0x1028d558, 0x10779ed8, 0x101195e8, 0x1071a828, 0x101fefc8, 0x10774c24, 0x10131c00, 0x104a8518, 0x10122b68,
     0x1034f1f8, 0x1034f318, 0x10345bb0, 0x10482ca0, 0x101312b8, 0x1048aa94, 0x1049dfa8, 0x10203738, 0x10147cf8, 0x10147e50, 0x101cce50, 0x10203574, 0x102036ac,
     0x102a9e74, 0x10772774, 0x107727d4, 0x10772a94, 0x10772768}) | set(NULL_BACKGROUND_GETTER_CALLS) | set(COMMENTARY_LINE_READS) | set(FIND_LIST_TITLE_READS) | set(FIND_LIST_FILTERS) | set(PROFILE_OFFER_READS) | set(ADAPTIVE_GUI_INSTRUCTIONS) | {ADAPTIVE_BACKGROUND_BOUNDARY}
 OWNER_HOOK = re.compile(r"if \(try_modern_(\w+)\(s, 0x[0-9a-f]+\)\) return true;")
@@ -2991,6 +2991,16 @@ def generate_page(page, instructions, selected, local_temporaries=True, userops=
                          f"s.memory.write<4>({sp.format(-frame & 0xffffffff)}, s.r<4>(4));",
                          "s.wr<4>(2440, s.r<4>(8));", f"s.wr<4>(4128, 0x{continuation:x});",
                          transfer(continuation, transfer_page, selected), "}"])
+        if a == 0x10122b68:
+            # Daily processing checks for a competition and for a missing
+            # result, but can find a competition whose stats object is null.
+            # Treat that as a missing result at the original call's return.
+            if item["assembly"] != "bl 0x10459b50" or plain_direct_call(item) != 0x10459b50:
+                raise ValueError("Daily competition stats call no longer matches the audited release")
+            code.extend(["if (s.r<4>(12) == 0) {",
+                         "s.wr<4>(2440, s.r<4>(8));",
+                         "s.wr<4>(4128, 0x10122b6c);",
+                         transfer(0x10122b6c, transfer_page, selected), "}"])
         leaves = inlining.leaves if inlining else {}
         target = item["flows"][0] if leaves and item.get("flow") == "UNCONDITIONAL_CALL" and item.get("flows") else None
         if target in leaves:

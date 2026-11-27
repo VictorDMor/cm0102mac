@@ -15,6 +15,7 @@
 // at the box's own stack pointer, with the registers the original holds there: r13 = 1, r14 the button byte's address, r15 the flag,
 // r16 / r17 the hot states of OK / Quit, r18-r27 the layout (set before the first call that follows it), r28-r31 the mouse y and x addresses
 // and the two colour words' addresses. r3-r10 are those the last callee leaves, with the arguments the original sets.
+#include "shortlist_worker_access.hpp"
 #include "graph_carbon_detail.hpp"
 
 namespace cm::aot::graph_carbon {
@@ -56,6 +57,10 @@ constexpr std::int32_t ninth_argument = 0x38, ok_caption = 0x40, quit_caption = 
 std::uint32_t version_text(Cpu& c) { return c.toc(box_toc::version_text); }
 
 void assertion_box(Cpu& c, std::uint32_t message, std::uint32_t detail, std::uint32_t offer_quit) {
+    // The shortlist caller can recover on the game thread after joining its
+    // workers. A worker cannot open or measure a dialog on the host surface.
+    if (shortlist_workers::active_records)
+        throw std::runtime_error("Candidate evaluation reached a game assertion");
     Frame frame(c, 0x10769b60, 0x100, {.first_gpr = 13});
     const auto pool = c.toc(toc::pool);
     const auto mouse_y = c.toc(box_toc::mouse_y), mouse_x = c.toc(box_toc::mouse_x), text_colour = c.toc(box_toc::text_colour),
