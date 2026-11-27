@@ -24,7 +24,12 @@ void news_builder(const char* path) {
         };
         // Original publication initializes owned text, unread counts and IDs.
         // Include a long article to exercise wrapping and the body scrollbar.
-        for(unsigned n=0;n<12;++n) {
+        invoke(0x102bdf90,{scratch+64,30,0}); // An unanswered squad call-up.
+        for (unsigned field = 0; field < 3; ++field) invoke(0x102cb4b0,{scratch+64,field,0});
+        invoke(0x102cbc10,{queue,scratch+64,person,0});
+        const auto decision_id = c.u32(queue+16);
+        unsigned newest_filtered = 0;
+        for(unsigned n=0;n<36;++n) {
             invoke(0x102bdf90,{scratch+64,0x1388,0});
             invoke(0x102cb4b0,{scratch+64,0,c.u32(person)});
             invoke(0x102cb4b0,{scratch+64,1,1});
@@ -34,6 +39,7 @@ void news_builder(const char* path) {
             text(scratch+512,message);
             invoke(0x102cb630,{scratch+64,3,scratch+512,0});
             invoke(0x102cbc10,{queue,scratch+64,person,0});
+            if (n == 19) newest_filtered = c.u32(queue+16);
         }
         invoke(0x102ce710,{person,0});
         const auto history=c.u32(manager+0x10),display=c.u32(manager+0x24);
@@ -101,7 +107,7 @@ void news_builder(const char* path) {
             else if(current!=baseline.at(checkpoint))throw std::runtime_error("News records/headlines differ at checkpoint "+std::to_string(checkpoint));
             ++checkpoint;
         };
-        const auto build=[&](GuiCanvas canvas) {
+        const auto build=[&](GuiCanvas canvas, bool list_at_top = false) {
             require(s.platform->resize_gui_canvas(s,canvas),"News resize failed");
             require(adaptive_screen_available(s,0x102cea30)==adaptive,"News preference gate failed");
             invoke(0x10719560,{display,1,0}); invoke(0x102cea30,{});
@@ -126,13 +132,18 @@ void news_builder(const char* path) {
             for(unsigned i=0;i<c.u16(display+0x129da4);++i) {
                 invoke(0x10714630,{grid(i)}); invoke(0x10714110,{grid(i),0});
             }
-            // Every selected headline remains within the viewport after the
+            if(list_at_top)
+                require(value(10 + 3*value(1)) == 0 && c.i32(grid(list) + 0x1fc) == 0, "Read All did not scroll the displayed table to the top");
+            // During normal navigation, the selected headline remains visible after the
             // builder restores scrolling with its own visible-row capacity.
             for(unsigned i=0;i<c.u16(display+0x129da6);++i) {
                 const auto at=control(i);
                 if(c.i16(at+0x72)==int(list) && c.u32(at+0x38)==0x210) {
                     const auto box=rect(at+0x10),panel=rect(grid(list));
-                    require(box.top>=panel.top && box.bottom<=panel.bottom && box.height()>0,"Selected news is outside viewport");
+                    if (box.top < panel.top || box.bottom > panel.bottom || box.height() <= 0)
+                        throw std::runtime_error("Selected news outside viewport at checkpoint " + std::to_string(checkpoint) +
+                            ", tab " + std::to_string(value(1)) + ", offset " + std::to_string(value(10+3*value(1))) +
+                            ", first " + std::to_string(c.i32(grid(list)+0x1fc)) + ", row top " + std::to_string(box.top));
                 }
             }
             // Query the original hit router without executing story callbacks.
@@ -141,7 +152,7 @@ void news_builder(const char* path) {
                 const auto at=control(i),action=c.u32(at+8);
                 // Edit fields focus first; their action is dispatched when
                 // editing completes, covered by command(9) below.
-                if(action!=1 && action!=2 && action!=3 && action!=5 && action!=2007)continue;
+                if(action!=1 && action!=2 && action!=3 && action!=5 && action!=news_screens::read_all_action && action!=2007)continue;
                 if(std::find(checked.begin(),checked.end(),action)!=checked.end())continue;
                 const auto box=rect(at+0x10);
                 if(box.width()<=0 || box.height()<=0 || box.top<10)continue;
@@ -169,6 +180,26 @@ void news_builder(const char* path) {
         command(1,0); build(canvas);
         require(value(3)>30,"News fixture must overflow the list");
         command(2,c.u32(value(2)+(value(3)-1)*0xe4+0xdc)); build(canvas);
+        if (value(9) != decision_id) { command(2,decision_id); build(canvas); }
+        const auto intervention = rect(control(find(3)) + 0x10);
+        require(intervention.left == 110 && intervention.right <= rect(grid(7)).left, "The intervention overlaps the filter");
+        require(value(10) > 0, "Read All fixture must start scrolled away from the top");
+        const auto newest_id = c.u32(value(2) + 0xdc);
+        require(newest_id != decision_id, "Fixture needs a newer story than the pending decision");
+        const auto read_all = rect(control(find(news_screens::read_all_action)) + 0x10);
+        const auto next = rect(control(find(5)) + 0x10);
+        require(next.right <= read_all.left && next.top == read_all.top, "Read All must follow Read Next on the toolbar");
+        command(news_screens::read_all_action);
+        build(canvas, true);
+        require(value(9) == newest_id && c.u32(value(5) + 0xdc) == newest_id, "Read All did not open the newest article");
+
+        build(canvas, true);
+        command(2,decision_id); build(canvas);
+        require(rect(control(find(3)) + 0x10).left == intervention.left, "Read All removed the pending intervention");
+        text(value(8),"Zebra 1"); command(9); build(canvas);
+        command(news_screens::read_all_action); build(canvas, true);
+        require(value(9) == newest_filtered && c.u32(value(5) + 0xdc) == newest_filtered,
+                "Read All opened a story outside the filter or missed the newest match");
         for(const auto* filter:{"Zebra","zzzzqqq",""}) {
             text(value(8),filter); command(9); build(canvas);
             if(std::string_view(filter)=="zzzzqqq")require(!value(5),"Unmatched filter retained a selection");

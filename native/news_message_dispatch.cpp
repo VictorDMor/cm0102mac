@@ -1,4 +1,5 @@
 #include "news_message_detail.hpp"
+#include "holiday_article.hpp"
 #include <algorithm>
 #include <array>
 
@@ -80,6 +81,7 @@ std::uint32_t render_message(Cpu& c,std::uint32_t item,std::uint32_t manager,
         assertion(c,frame,0x102be128,0x258,0x168,0xa7);c.set(4,c.toc(slot::success));return 0;
     }
     Program{c}.call(0x1074c570,0x102be178,{output});
+    if (holiday_article::render(c, item, output, std::int8_t(detail) != 0)) return 1;
     Message message{c,frame,item,output,detail};unsigned next_group=0;
     while(next_group<groups.size()) {
         const auto& group=groups[next_group];

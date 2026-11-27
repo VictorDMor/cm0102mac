@@ -4,6 +4,8 @@
 // NEWS_SCREENS.CPP: the manager's news screen and the send-message dialog.
 namespace cm::aot::news_screens {
 using guest::Cpu;
+inline constexpr int read_all_action = 30510;
+inline constexpr unsigned reload_select_newest = 2; // value 1 is the usual list refresh
 // The news screen, the screen manager's callbacks for it.
 void open_news(Cpu&, std::uint32_t person, std::uint32_t check_attention);
 void draw_news(Cpu&);

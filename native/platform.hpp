@@ -14,6 +14,7 @@ namespace cm::aot {
 struct State;
 class DatabaseSeasons;
 class CareerRules;
+namespace holiday_digest { class Store; }
 enum class EventMode { interactive, isolated };
 class NativePlatform {
 public:
@@ -28,12 +29,15 @@ public:
     DatabaseSeasons& database_seasons();
     // The running career's own rules (the save member native_rules.tmp).
     CareerRules& career_rules();
+    holiday_digest::Store& holiday_digests();
+    void notify_holiday_return();
     // The guest's resolved temporary folder, where the original save code
     // collects and restores `*.tmp` members.
     void note_temporary_directory(std::string guest_directory);
     void inspect_database_season_names();
     // True between the saved-career loader's entry and its single exit.
     bool career_loading() const;
+    bool has_career_member(std::string_view name) const;
     // A career has been started or loaded in this session (a New Game that
     // was abandoned on its setup screens counts until the next one).
     bool career_present() const;

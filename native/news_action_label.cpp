@@ -1,4 +1,5 @@
 #include "news_action_detail.hpp"
+#include "holiday_article.hpp"
 #include <optional>
 
 namespace cm::aot::news {
@@ -610,6 +611,7 @@ std::uint32_t action_label(Cpu& c,std::uint32_t item,std::uint32_t manager,
     const auto callback_present=compare_logical(c,callback); c.put8(output,0);
     if(callback_present==0) { assertion(c,frame,0x102c6c50,0xbc,0x8c,0x124e); return 0; }
     c.put32(callback,0);
+    if (holiday_article::report_id(c, item)) return 0;
     Label label{c,frame,{c,item},manager,output,callback};
     if(label.in_category(6,0x102c6ca4)) if(const auto result=label.manager_message()) return *result;
     if(label.in_category(2,0x102c6d54)) return label.competition_message();

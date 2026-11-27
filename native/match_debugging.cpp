@@ -1,4 +1,5 @@
 #include "match_debugging.hpp"
+#include "news_screens.hpp"
 #include "aot_runtime.hpp"
 #include "match_debugger_goal.hpp"
 #include "match_debugger_cards.hpp"
@@ -261,11 +262,13 @@ bool deliver_match_shortcut(State& s, const CommandContext& expected, const UIEv
     if (event.modifiers & 0x1900) return false; // Command, Option, Control.
     const auto character = event.message & 0xff;
     const bool toggle = character == 'z' || character == 'Z';
-    if (!toggle && (character < '1' || character > '6' || !action_enabled(shortcut_first + character - '1'))) return false;
+    const bool read_all = character == 'r' || character == 'R';
+    if (read_all && expected.handler != 0x102cfcd0) return false;
+    if (!toggle && !read_all && (character < '1' || character > '6' || !action_enabled(shortcut_first + character - '1'))) return false;
     const auto current = original_command_context(s, 0xffff);
     if (!current.ready || current != expected) return false;
-    if (toggle && current.handler != 0x1028dc80) {
-        if (!current.actions[std::size_t(DirectCommand::continue_game)]) return false;
+    if (read_all || (toggle && current.handler != 0x1028dc80)) {
+        if (!read_all && !current.actions[std::size_t(DirectCommand::continue_game)]) return false;
         // DISPLAY's text_field_key (1071b520) owns typing while a field has a
         // caret (+0x44), or while Tab/Return is transferring focus (12a936).
         // Keep plain Z available there, even when the sidebar allows Continue.
@@ -274,6 +277,12 @@ bool deliver_match_shortcut(State& s, const CommandContext& expected, const UIEv
             const auto record = current.screen + 0xba864 + std::uint32_t(control.index) * 0x17c;
             if (std::int32_t(s.memory.read<4>(record + 0x44)) >= 0 ||
                 std::int16_t(s.memory.read<2>(current.screen + 0x12a936)) != -1) return false;
+        }
+        if (read_all) {
+            for (const auto& control : original_controls(s, current))
+                if (control.action == news_screens::read_all_action && (control.flags & 2))
+                    return event.kind == UIEvent::Kind::auto_key || deliver_original_control(s, current, control.index);
+            return false;
         }
         return event.kind == UIEvent::Kind::auto_key ||
             deliver_original_command(s, current, DirectCommand::continue_game);

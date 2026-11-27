@@ -1,3 +1,4 @@
+#include "holiday_transfers.hpp"
 #include "transfer_manager_history.hpp"
 #include "guest_values.hpp"
 
@@ -65,6 +66,8 @@ bool older_than_cutoff(Cpu& c, std::uint32_t record, std::uint32_t year, std::ui
 }
 
 void append_past_transfer(Cpu& c, std::uint32_t manager, std::uint32_t transfer) {
+    // PlayerMove keeps the signed offer in r27 at this call from file_and_clear_offers.
+    const auto holiday_offer = c.lr() == 0x103f0394 ? c.r(27) : 0u;
     Frame frame(c, 0x103f2d50, 0x80, {.first_gpr = 26});
     const Kept<26> transfers(c, manager);
     const Kept<27> body(c, c.toc(body_slot));
@@ -102,6 +105,7 @@ void append_past_transfer(Cpu& c, std::uint32_t manager, std::uint32_t transfer)
     c.put16(out + 0x22, c.u16(record + 0x22));
     c.put16(out + 0x20, c.u16(record + 0x20));
     c.put8(out + 0x24, c.u8(record + 0x24));
+    holiday_transfers::recorded(c, out, holiday_offer);
 }
 
 void archive_past_transfers(Cpu& c, std::uint32_t manager) {

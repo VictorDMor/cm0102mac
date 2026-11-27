@@ -3,6 +3,14 @@
 The live work list. Claude keeps it current during a run; read this instead of
 the scrollback. Remove ticked items once their commit is pushed.
 
+## Manager news (2026-11-26)
+
+- [x] Show a Dock badge for each scheduled human holiday return and clear it on activation or game input.
+
+- [x] Place Read All after Read Next, bind R, and open the newest visible headline while keeping decisions pending.
+- [x] Collect first-team results and holiday events and keep the full report in a single saved inbox item.
+- [x] Verified the inbox command across all eight tabs, both holiday return paths, three-page navigation on the reference career capture and the optional save member’s round trip.
+
 ## Screens asked for alongside (Victor, 2026-11-24)
 
 - [x] New Screens layout for the generic message box of FILE_SCREENS.CPP (every opener: quit, restart, notices) and for the line-up confirmation before the match (commit 3b7df280, by a subagent; Victor's answers of 2026-11-24). The line-up confirmation is its own screen in MATCH_SCREENS: render 0x1029ad50, handler 0x1029cd10, opener 0x1029ab60 ("Proceed to the match ?", No = action 2, Yes = action 3). Both have the shape of the existing message screens and map to `ScreenTemplate::message_screen` (the shared Yoga recipe); two faults of that shared layout with long messages were fixed (hidden padding rows, buttons pushed off the canvas). Check: `cm-adaptive-gui-checks --message-screens`, 52 scenarios, run on the reference week's snapshot. Open: the `adaptive_gui` ctests cannot run since `.local` was rebuilt (their snapshot `ui/tactics-views/initial.snapshot` is gone); the Yes answers and the look are Victor's to see in play; the line-up check uses a synthetic match record (the fewest lines the builder gives).

@@ -9,6 +9,7 @@
 #include "manager_manager_update.hpp"
 #include "guest_fpu.hpp"
 #include "guest_values.hpp"
+#include "holiday_match_report.hpp"
 #include "manager_manager_detail.hpp"
 #include "manager_manager_review.hpp"
 #include "manager_manager_update_detail.hpp"
@@ -1183,6 +1184,7 @@ void update(Cpu& c, std::uint32_t object, std::uint32_t club, std::uint32_t fixt
 
 // 0x1019e8f0. Frame 0x50 (r29-r31 saved one by one, LR at +8).
 void after_match(Cpu& c, std::uint32_t object, std::uint32_t fixture, std::uint32_t match) {
+    holiday_match_report::filed(c, fixture, match);
     c.set(0, c.lr());
     Frame frame(c, 0x1019e8f0, 0x50, {.first_gpr = 29});
     guest::keep(c, {{31, match}, {30, fixture}, {29, object}});

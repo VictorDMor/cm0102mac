@@ -5,6 +5,7 @@
 #include "human_manager_detail.hpp"
 #include "human_manager_records.hpp"
 #include "news.hpp"
+#include "holiday_digest.hpp"
 
 namespace cm::aot::human_manager {
 namespace {
@@ -97,8 +98,9 @@ void set_away(Cpu& c, std::uint32_t humans, std::uint32_t flag, std::uint32_t st
         return;
     }
     const auto away = record_at(c, humans, *index) + record::away;
-    if (nonzero(flag) && !nonzero(c.u8(away))) c.put32(humans + table_away, c.u32(humans + table_away) + 1);
-    if (!nonzero(flag) && nonzero(c.u8(away))) c.put32(humans + table_away, c.u32(humans + table_away) - 1);
+    const bool was_away = nonzero(c.u8(away));
+    if (nonzero(flag) && !was_away) c.put32(humans + table_away, c.u32(humans + table_away) + 1);
+    if (!nonzero(flag) && was_away) c.put32(humans + table_away, c.u32(humans + table_away) - 1);
     c.put8(away, flag);
     if (nonzero(flag)) {
         // Both of the staff's club words get the news (+0x24 first, then +0x20).
@@ -112,6 +114,7 @@ void set_away(Cpu& c, std::uint32_t humans, std::uint32_t flag, std::uint32_t st
         }
     }
     tell_match_day(c, 0x101481bc);
+    if (was_away != nonzero(flag)) holiday_digest::transition(c, staff, nonzero(flag));
 }
 
 void set_runs_club(Cpu& c, std::uint32_t humans, std::uint32_t value, std::uint32_t staff) {

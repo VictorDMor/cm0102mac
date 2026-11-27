@@ -9,6 +9,12 @@
 #include "routine_check.hpp"
 #include "new_screens.hpp"
 #include "holiday_return.hpp"
+#include "holiday_digest.hpp"
+#include "holiday_digest_store.hpp"
+#include "holiday_match_report.hpp"
+#include "holiday_article.hpp"
+#include "news_detail.hpp"
+#include "news_screens.hpp"
 #include "human_manager_detail.hpp"
 #include "debug_localization.hpp"
 #include "match_debugging.hpp"
@@ -1126,6 +1132,59 @@ void player_builder(const char* path, unsigned section = 1) {
 #include "adaptive_manager_status_checks.hpp"
 #include "adaptive_job_information_checks.hpp"
 #include "adaptive_holiday_checks.hpp"
+
+void holiday_digest_scene(const char* path) {
+    Temporary temp;
+    TransferScene t(path, temp.path);
+    auto& c = t.c;
+    const auto humans = c.u32(c.toc(-0x7a54));
+    auto& store = t.s.platform->holiday_digests();
+    t.invoke(0x10147fd0, {humans, 1, t.instance});
+    require(store.active_ids.size() == 1, "going on holiday starts a digest");
+    const auto id = store.active_ids.front();
+    const auto fixture = allocate(t.s, 0x54, true), opponent = allocate(t.s, 0x248, true);
+    c.put32(opponent, c.u32(t.managed) + 1);
+    c.put32(fixture + 0x28, c.u32(c.toc(-0x7b80)));
+    for (bool human_home : {false, true}) {
+        c.put32(fixture + 0x1c, human_home ? t.managed : opponent);
+        c.put32(fixture + 0x20, human_home ? opponent : t.managed);
+        for (unsigned home_first : {0u, 1u}) for (unsigned away_first : {0u, 1u}) {
+            c.put8(fixture + 0x40, home_first);
+            c.put8(fixture + 0x41, away_first);
+            const auto& results = store.reports.at(id).results;
+            const auto before = results.size();
+            holiday_match_report::filed(c, fixture, 0);
+            require(results.size() == before + (human_home ? home_first : away_first),
+                    "A holiday result must come from the manager's first team");
+        }
+    }
+    for (unsigned i = 0; i < 130; ++i)
+        holiday_digest::record_event(t.s, t.managed, "results", "Match " + std::to_string(i));
+    t.invoke(0x10147fd0, {humans, 0, t.instance});
+    t.invoke(0x10147fd0, {humans, 0, t.instance});
+    require(store.active_ids.empty() && store.reports.size() == 1, "one report per return");
+    const auto& lines = store.reports.at(id).lines;
+    require(std::ranges::find(lines, "- Match 129") != lines.end(), "the long report keeps the last event");
+    news::detail::Queue queue{c, c.u32(c.toc(-0x7bf0))};
+    unsigned count = 0;
+    for (int i = 0; i < queue.item_count().get(); ++i)
+        if (holiday_article::report_id(c, queue.item(i)) == id) ++count;
+    require(count == 1, "exactly one inbox item contains the long report");
+    t.invoke(0x102ce710, {t.instance, 0});
+    t.rebuild({800, 600});
+    require(t.value(33) == id && t.value(34) == 0 && t.value(35) >= 3, "inbox shows the first page of the report");
+    const auto turn_page = [&](unsigned action) {
+        const int control = t.find(action);
+        require(control >= 0 && t.enabled(control), "page control is enabled");
+        t.invoke(c.u32(c.u32(t.history() + 8)), {unsigned(control)});
+        t.rebuild({800, 600});
+    };
+    turn_page(30512);
+    require(t.value(34) == 1, "next page of the same news item");
+    turn_page(30511);
+    require(t.value(34) == 0 && store.reports.size() == 1, "previous page of the same news item");
+}
+
 #include "adaptive_bid_rejection_checks.hpp"
 #include "adaptive_friendly_checks.hpp"
 #include "adaptive_info_pages_checks.hpp"
@@ -1323,6 +1382,7 @@ int main(int argc, char** argv) {
         else if (argc == 3 && std::string_view(argv[2]) == "--hall-of-fame") hall_of_fame_builder(argv[1]);
         else if (argc == 3 && std::string_view(argv[2]) == "--manager-status") manager_status_builder(argv[1]);
         else if (argc == 3 && std::string_view(argv[2]) == "--job-information") job_information_builder(argv[1]);
+        else if (argc == 3 && std::string_view(argv[2]) == "--holiday-digest") holiday_digest_scene(argv[1]);
         else if (argc == 3 && std::string_view(argv[2]) == "--holiday") holiday_builder(argv[1]);
         else if (argc == 3 && std::string_view(argv[2]) == "--bid-rejection") bid_rejection_builder(argv[1]);
         else if (argc == 3 && std::string_view(argv[2]) == "--friendly-countries") friendly_countries_builder(argv[1]);

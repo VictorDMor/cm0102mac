@@ -74,6 +74,8 @@ public:
     // Empty paths keep component checks entirely in memory.
     explicit NativeUI(std::filesystem::path presentation_preference = {});
     ~NativeUI();
+    void notify_holiday_return();
+    void clear_holiday_badge();
     void initialize_cursor();
     void create_cursor(std::uint32_t token, const ColorCursor& cursor);
     void set_cursor(std::uint32_t token);

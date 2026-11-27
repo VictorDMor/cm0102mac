@@ -1,3 +1,4 @@
+#include "holiday_transfers.hpp"
 #include "transfer_manager_native_recipients.hpp"
 #include "transfer_manager_native_recipients_held.hpp"
 #include "transfer_manager_native_detail.hpp"
@@ -89,6 +90,7 @@ void record_completed_transfer(Cpu& c, std::uint32_t manager, std::uint32_t pers
     c.put32(row + 0xc, c.u32(c.u32(person + person_name_words + 8) + 0x20));
     c.put8(row + 0x1c, loaned ? kind_loan : kind_transfer);
     c.put32(row + 0x18, 0);
+    holiday_transfers::recorded(c, row);
     if (loaned) return;
 
     if (c.u32(person + person_profile_link))

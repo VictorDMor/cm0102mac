@@ -1,4 +1,6 @@
 #include "news_screens_detail.hpp"
+#include "news_detail.hpp"
+#include "holiday_article.hpp"
 
 namespace cm::aot::news_screens {
 using namespace detail;
@@ -32,7 +34,20 @@ std::uint32_t news_command(Cpu& c, std::uint32_t control) {
         bl(c, set_history_value, 0x102cfda4, {screens, tab_values + 1, row, 0});
     }
     const auto count = bl(c, unread_count, 0x102cfdb4, {c.u32(news), manager, 0});
-    if (compare(c, std::int32_t(std::uint32_t(unread_seen)), std::int32_t(count)) != 0) {
+
+    const bool unread_changed = compare(c, std::int32_t(std::uint32_t(unread_seen)), std::int32_t(count)) != 0;
+    // Read All is added; every other control takes the original's path, which
+    // redraws on a changed unread count before reading the control. The peek
+    // reads the same words as control_action without touching registers.
+    const bool read_all = [&] {
+        if (control_id == -1) return false;
+        const auto row = c.u32(screens + 0x24 + current_row(c, screens)) + 0xc0000 +
+                         std::uint32_t(std::int32_t(control_id)) * 0x17c;
+        auto chosen = std::int16_t(c.u32(row + std::uint32_t(control_action_word)));
+        if (chosen == 0) chosen = c.i16(screens + screens_high - 0x7e62);
+        return chosen == read_all_action;
+    }();
+    if (unread_changed && !read_all) {
         history.set(4, 1, 0x102cfdd0);
         return result(c, std::uint32_t(redraw));
     }
@@ -42,6 +57,26 @@ std::uint32_t news_command(Cpu& c, std::uint32_t control) {
     c.set(3, table);
     const auto action = [&](unsigned via) { return control_action(c, screens, table, control_id, via); };
     const auto value_through_r3 = [&]() { return control_word(c, table, control_id, control_value_word, 3); };
+    if (read_all && action(4) == read_all_action) {
+        const news::detail::Queue queue{c, c.u32(news)};
+        const auto index = news::detail::manager_index(c, manager);
+        if (index < unsigned(queue.manager_count().get())) {
+            const news::detail::Inbox inbox{c, queue.managers() + index * news::detail::Inbox::size};
+            const auto first = inbox.first().get();
+            if (first >= 0) {
+                for (unsigned i = 0; i < news::detail::Inbox::capacity; ++i) {
+                    const NewsItem item{c, queue.item(unsigned(first) + i)};
+                    if (item.id() && !item.read())
+                        bl(c, acknowledge, 0x102cf45c, {queue.address, manager, item.id(), 0});
+                }
+            }
+        }
+        history.set(tab_values + 1, 0, 0x102cfda4);
+        history.set(tab_values, 0, 0x102cff24);
+        history.set(4, reload_select_newest, 0x102cfdd0);
+        return result(c, std::uint32_t(redraw));
+    }
+    if (holiday_article::change_page(c, selected, action(4), screens)) return result(c, std::uint32_t(redraw));
     if (compare(c, action(4), 1) == 0) {
         const auto chosen = std::int8_t(control_word(c, table, control_id, control_value_word, 4));
         if (compare(c, std::int32_t(std::uint32_t(tab)), chosen) != 0) {

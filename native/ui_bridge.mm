@@ -35,6 +35,15 @@ std::atomic<bool> screens_enabled{cm::aot::default_new_screens};
 std::filesystem::path screens_preference;
 // Main-thread only. The game accesses the owner solely through on_main.
 cm::aot::NativeUI* active_ui = nullptr;
+// One Dock tile per application. AppKit callbacks and the NativeUI bridge
+// access this counter on the main thread.
+NSUInteger pending_holiday_returns = 0;
+void dismiss_holiday_badge() {
+    if (pending_holiday_returns) {
+        pending_holiday_returns = 0;
+        NSApp.dockTile.badgeLabel = nil;
+    }
+}
 bool repeated_key_event(NSEvent* event) {
     // isARepeat is undefined for mouse/accessibility menu events and AppKit
     // raises NSInternalInconsistencyException if queried for a non-key event.
@@ -141,6 +150,8 @@ std::uint8_t original_character(NSEvent* event) {
 - (BOOL)acceptsFirstMouse:(NSEvent*)event { (void)event; return YES; }
 - (void)queueInput:(NSEvent*)native kind:(cm::aot::UIEvent::Kind)kind {
     if (!pending) return;
+    if (kind == cm::aot::UIEvent::Kind::mouse_down || kind == cm::aot::UIEvent::Kind::key_down)
+        dismiss_holiday_badge();
     cm::aot::UIEvent event{kind, token};
     const auto host = [self.window convertPointToScreen:native.locationInWindow];
     const auto point = inversePoint({host.x, CGRectGetHeight(CGDisplayBounds(CGMainDisplayID())) - host.y});
@@ -367,6 +378,7 @@ std::uint8_t original_character(NSEvent* event) {
 }
 - (void)applicationDidBecomeActive:(NSNotification*)notification {
     (void)notification;
+    dismiss_holiday_badge();
     cm::aot::UIEvent event{cm::aot::UIEvent::Kind::suspend_resume};
     event.message = 0x01000001;
     pending->push_back(event);
@@ -1044,9 +1056,18 @@ NativeUI::NativeUI(std::filesystem::path preference) : worker_(std::make_unique<
 }
 NativeUI::~NativeUI() {
     CM_PROFILE_ON_MAIN("NativeUI::~NativeUI", [&] {
+        dismiss_holiday_badge();
         active_ui = nullptr;
         impl_.reset();
     });
+}
+void NativeUI::notify_holiday_return() {
+    CM_PROFILE_ON_MAIN("NativeUI::notify_holiday_return", [] {
+        NSApp.dockTile.badgeLabel = @(++pending_holiday_returns).stringValue;
+    });
+}
+void NativeUI::clear_holiday_badge() {
+    CM_PROFILE_ON_MAIN("NativeUI::clear_holiday_badge", dismiss_holiday_badge);
 }
 GuiCanvas NativeUI::adaptive_canvas(bool enabled) {
     if (!on_main_thread()) {

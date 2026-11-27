@@ -148,6 +148,17 @@ void check_bootstrap() {
         }
         require(kinds == std::vector{UIEvent::Kind::open_files, UIEvent::Kind::print_files, UIEvent::Kind::quit},
                 "Bootstrap dropped/reordered events or duplicated launch-with-documents");
+        ui.notify_holiday_return();
+        ui.notify_holiday_return();
+        on_main([] {
+            require([NSApp.dockTile.badgeLabel isEqualToString:@"2"], "Dock badge lost a holiday return");
+            [NSApp.delegate applicationDidBecomeActive:[NSNotification notificationWithName:NSApplicationDidBecomeActiveNotification object:NSApp]];
+            require(NSApp.dockTile.badgeLabel.length == 0, "Activating the game left old returns on the Dock");
+        });
+        ui.notify_holiday_return();
+        on_main([] { require([NSApp.dockTile.badgeLabel isEqualToString:@"1"], "Dock badge did not restart at one"); });
+        ui.clear_holiday_badge();
+        on_main([] { require(NSApp.dockTile.badgeLabel.length == 0, "Career replacement left the Dock badge"); });
         return 0;
     }, service_native_ui) == 0, "Bootstrap worker failed");
     std::cout << "Pre-worker Finder document/print/quit buffering and launch suppression passed\n";

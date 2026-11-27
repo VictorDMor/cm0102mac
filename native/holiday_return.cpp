@@ -503,7 +503,10 @@ void slot(State& s) {
         }
         // The routine below hands the screen to a manager only when he has news: this one gets it now, on the
         // day he chose, news or not (stop_for).
-        if (c.u8(human_manager::record_at(c, humans, *index) + human_manager::record::away) == 0) returning.push_back(staff);
+        if (c.u8(human_manager::record_at(c, humans, *index) + human_manager::record::away) == 0) {
+            returning.push_back(staff);
+            s.platform->notify_holiday_return();
+        }
         career->set_holiday_return(entry.staff, std::nullopt);
     }
 }

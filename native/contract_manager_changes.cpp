@@ -1,3 +1,4 @@
+#include "holiday_transfers.hpp"
 #include "contract_manager_random.hpp"
 
 namespace cm::aot::contract_manager {
@@ -373,6 +374,7 @@ void finish_secondary_contract(Cpu& c, std::uint32_t manager_address, std::uint3
     }
     const auto state = c.u8(person + 0x6d); c.set(0, state);
     if (compare(c, state, 16) == 0) { c.set(0, 4); c.put8(person + 0x6d, 4); }
+    holiday_transfers::returned_from_loan(c, person, previous_club, final_club);
 }
 
 void apply_secondary_contract(Cpu& c, std::uint32_t manager_address, std::uint32_t proposal_address) {

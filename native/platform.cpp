@@ -28,6 +28,7 @@
 #include "resource_bridge.hpp"
 #include "filesystem_bridge.hpp"
 #include "career_rules.hpp"
+#include "holiday_digest_store.hpp"
 #include "database_seasons.hpp"
 #include "directory_catalog.hpp"
 #include "printing_bridge.hpp"
@@ -446,6 +447,7 @@ struct NativePlatform::Impl {
     // The switch was chosen in Game Settings since this career started or loaded.
     bool career_switch_edited = false;
     CareerRules career_rules;
+    holiday_digest::Store holiday_digests;
     // The custom database new careers start with (select_custom_database).
     std::optional<competition_overrides::CustomDatabase> custom_database;
     std::optional<CompetitionDefaults> competition_defaults;
@@ -1522,19 +1524,43 @@ struct NativePlatform::Impl {
         } catch (const FileError&) { return std::nullopt; }
         catch (const std::exception&) { return std::nullopt; }
     }
-    // The career rules member's host file, once the guest has resolved its
+    // An additional save member's host file, once the guest has resolved its
     // temporary folder (every database load, save and career load does).
-    std::optional<fs::path> career_rules_file() const {
+    std::optional<fs::path> career_member_file(std::string_view name) const {
         if (!temporary_directory) return std::nullopt;
         try {
-            return writable_path(path(0, 0, convert(*temporary_directory + std::string(CareerRules::member_name),
+            return writable_path(path(0, 0, convert(*temporary_directory + std::string(name),
                                                     kCFStringEncodingMacRoman, kCFStringEncodingUTF8)));
         } catch (const FileError&) { return std::nullopt; }
         catch (const std::exception&) { return std::nullopt; }
     }
+    void read_holiday_digests() {
+        holiday_digests = {};
+        if (const auto file = career_member_file(holiday_digest::Store::member_name)) {
+            try { holiday_digests.load(*file); }
+            catch (const std::exception& error) {
+                std::fprintf(stderr, "Holiday news not read: %s\n", error.what());
+                command_status = "Holiday news could not be read";
+            }
+        }
+    }
+    bool write_holiday_digests() {
+        try {
+            if (const auto file = career_member_file(holiday_digest::Store::member_name)) {
+                holiday_digests.save(*file);
+            } else if (!holiday_digests.reports.empty() || holiday_digests.next_id != 1) {
+                throw std::runtime_error("temporary folder unknown");
+            }
+            return true;
+        } catch (const std::exception& error) {
+            std::fprintf(stderr, "Holiday news not saved: %s\n", error.what());
+            command_status = "Could not save the holiday news member";
+            return false;
+        }
+    }
     void read_career_rules() {
         career_rules.reset();
-        const auto file = career_rules_file();
+        const auto file = career_member_file(CareerRules::member_name);
         std::error_code error;
         if (!file || !fs::is_regular_file(*file, error)) return;
         std::string text;
@@ -1571,13 +1597,16 @@ struct NativePlatform::Impl {
     // The previous career is gone: neither its rules nor its member's file
     // may reach the next one.
     void forget_career_rules() {
+        if (ui && event_mode == EventMode::interactive) ui->clear_holiday_badge();
         career_rules.reset();
+        holiday_digests = {};
         career_switch_edited = false;
         std::error_code error;
-        if (const auto file = career_rules_file()) fs::remove(*file, error);
+        if (const auto file = career_member_file(holiday_digest::Store::member_name)) fs::remove(*file, error);
+        if (const auto file = career_member_file(CareerRules::member_name)) fs::remove(*file, error);
     }
     void write_career_rules(CompetitionEdition edition) {
-        const auto file = career_rules_file();
+        const auto file = career_member_file(CareerRules::member_name);
         if (!file) {
             std::fprintf(stderr, "Career rules not saved: temporary folder unknown\n");
             return;
@@ -1924,6 +1953,10 @@ void NativePlatform::apply_adaptive_screen(State& s, std::uint32_t display) {
 }
 const fs::path& NativePlatform::game_directory() const { return impl_->game; }
 DatabaseSeasons& NativePlatform::database_seasons() { return *impl_->seasons; }
+void NativePlatform::notify_holiday_return() {
+    if (impl_->ui && impl_->event_mode == EventMode::interactive) impl_->ui->notify_holiday_return();
+}
+holiday_digest::Store& NativePlatform::holiday_digests() { return impl_->holiday_digests; }
 CareerRules& NativePlatform::career_rules() { return impl_->career_rules; }
 void NativePlatform::note_temporary_directory(std::string guest_directory) {
     impl_->temporary_directory = std::move(guest_directory);
@@ -2121,6 +2154,11 @@ void NativePlatform::quick_save_load_begin(State& s) {
     }
 }
 bool NativePlatform::career_loading() const { return impl_->career_loading; }
+bool NativePlatform::has_career_member(std::string_view name) const {
+    const auto file = impl_->career_member_file(name);
+    std::error_code error;
+    return file && fs::is_regular_file(*file, error);
+}
 bool NativePlatform::career_present() const { return impl_->career_present; }
 void NativePlatform::edit_career_historical_rules(bool on) {
     impl_->career_rules.set_historical_rules(on);
@@ -2132,14 +2170,25 @@ void NativePlatform::career_database_replaced() {
     impl_->seasons->forget_loaded();
     // The running career's own rules go with its world; the loaded one's
     // arrive with its temporary members (career_members_extracted).
+    if (impl_->ui && impl_->event_mode == EventMode::interactive) impl_->ui->clear_holiday_badge();
     impl_->career_rules.reset();
+    impl_->holiday_digests = {};
+    // The loader extracts the loaded save's members after this point
+    // (0x10346ee8); a save without holiday news must not read the last one's.
+    if (const auto file = impl_->career_member_file(holiday_digest::Store::member_name)) {
+        std::error_code error;
+        fs::remove(*file, error);
+    }
     impl_->career_switch_edited = false;
     impl_->new_game_names = false;
     // Until the loader reports success there is no career to edit.
     impl_->career_present = false;
 }
 void NativePlatform::career_members_extracted(State& s) {
-    if (std::int8_t(s.r<4>(12)) != 0) impl_->read_career_rules();
+    if (std::int8_t(s.r<4>(12)) != 0) {
+        impl_->read_career_rules();
+        impl_->read_holiday_digests();
+    }
 }
 void NativePlatform::career_load_reset() {
     // A new career starts outside any loader. Bound a flag left behind by a
@@ -2154,6 +2203,7 @@ void NativePlatform::quick_save_load_end(State& s) {
     impl_->career_loading = false;
     const bool success = std::int8_t(s.r<4>(12)) != 0;
     if (success) impl_->career_present = true;
+    else if (!impl_->career_present) impl_->holiday_digests = {};
     if (impl_->event_mode != EventMode::interactive) return;
     impl_->quick_save_destination.finish_load(success);
     if (success) impl_->quick_save_last_target = std::move(impl_->quick_save_load_target);
@@ -2174,11 +2224,21 @@ void NativePlatform::quick_save_load_end(State& s) {
 }
 bool NativePlatform::quick_save_write_begin(State& s) {
     // A career save (mode 0x16) bundles the temporary folder's `*.tmp` files.
-    if (s.r<4>(16) == 0x16) impl_->write_career_rules(competition_edition(s));
+    if (impl_->event_mode == EventMode::interactive && impl_->quick_save_active && impl_->quick_save_tracking_write) return false;
+    if (s.r<4>(16) == 0x16) {
+        if (!impl_->write_holiday_digests()) {
+            if (impl_->quick_save_active) {
+                // Complete the staged transaction as a failed write before the
+                // entry hook returns directly to the dispatcher or screen.
+                impl_->quick_save_tracking_write = true;
+                s.wr<4>(12, 0);
+                quick_save_write_end(s);
+            }
+            return false;
+        }
+        impl_->write_career_rules(competition_edition(s));
+    }
     if (impl_->event_mode != EventMode::interactive) return true;
-    // The original writer pumps events. A nested writer must not replace the
-    // active transaction's tracking or write into the destination mid-save.
-    if (impl_->quick_save_active && impl_->quick_save_tracking_write) return false;
     if (impl_->quick_save_active) impl_->quick_save_saved_markers = quick_save_markers(s);
     impl_->quick_save_tracking_write = s.r<4>(16) == 0x16;
     impl_->quick_save_rename_ok = false;
