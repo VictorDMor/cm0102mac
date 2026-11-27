@@ -87,6 +87,14 @@ struct InternationalRules {
     int inter_american_cup_last_edition = 1998;
 };
 
+namespace croatia_cup {
+struct Profile;
+extern const Profile cm0102, cm0001_389, si_3968;
+}
+enum class CroatianSecondFormat { regional_groups, national_table };
+enum class CroatianFirstFormat { single_table_16, split_table_12 };
+enum class CroatianSuperCupFormat { absent, golden_goal, extra_time };
+
 // Every rule the port decides, in one place. `global_rules` is the set every
 // edition starts from; an edition inherits it and changes only what its
 // database needs (competition_rules.cpp). A field added here is inherited by
@@ -97,6 +105,10 @@ struct CompetitionRules {
     InternationalRules international;
     // League-selection rows of countries this edition's data cannot run.
     std::span<const unsigned> unavailable_countries;
+    CroatianFirstFormat croatian_first = CroatianFirstFormat::single_table_16;
+    CroatianSecondFormat croatian_second = CroatianSecondFormat::regional_groups;
+    const croatia_cup::Profile* croatian_cup = &croatia_cup::cm0102;
+    CroatianSuperCupFormat croatian_super_cup = CroatianSuperCupFormat::absent;
 };
 inline constexpr CompetitionRules global_rules{};
 
@@ -133,6 +145,9 @@ enum class RuleCompetition {
     conference_cup,
     brazilian_serie_b,
     inter_american_cup,
+    croatian_second,
+    croatian_cup,
+    croatian_super_cup,
 };
 struct RuleChange {
     RuleCompetition competition;
@@ -141,6 +156,8 @@ struct RuleChange {
     void (*apply)(CompetitionRules&);
     // Where the rule and its first season were verified.
     std::string_view source;
+    // Historical additions can begin in an edition whose engine omits them.
+    bool include_edition_season = false;
 };
 // A competition's rules in one of its seasons: `rules`, which are those of
 // the season `after`, with every later change of that competition up to
@@ -148,18 +165,23 @@ struct RuleChange {
 // in the result; read another competition's from its own resolution.
 constexpr CompetitionRules with_rule_changes(CompetitionRules rules, std::span<const RuleChange> timeline,
                                              RuleCompetition competition, int season, int after) {
-    for (int applied = after;;) {
+    const auto eligible = [&](const RuleChange& change) {
+        return change.competition == competition && change.first_season <= season &&
+               (change.first_season > after || (change.first_season == after && change.include_edition_season));
+    };
+    const RuleChange* applied = nullptr;
+    for (;;) {
         // The next season with an entry, whatever order the table lists them in.
         const RuleChange* next = nullptr;
         for (const auto& change : timeline)
-            if (change.competition == competition && change.first_season <= season && change.first_season > applied &&
+            if (eligible(change) && (!applied || change.first_season > applied->first_season) &&
                 (!next || change.first_season < next->first_season))
                 next = &change;
         if (!next) return rules;
         // Entries of one season apply together, in table order.
-        applied = next->first_season;
+        applied = next;
         for (const auto& change : timeline)
-            if (change.competition == competition && change.first_season == applied) change.apply(rules);
+            if (eligible(change) && change.first_season == applied->first_season) change.apply(rules);
     }
 }
 // The checked-in timelines of every competition (competition_rules.cpp).

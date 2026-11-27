@@ -38,7 +38,9 @@ constexpr auto cm0102 = global_rules;
 
 // 2002/2003 (SI 3.9.68 data): the same engine and competitions. Nothing
 // differs yet; this is where a 2002/03 rule goes.
-constexpr auto si_3968 = inherit(cm0102, [](CompetitionRules&) {});
+constexpr auto si_3968 = inherit(cm0102, [](CompetitionRules& rules) {
+    rules.croatian_cup = &croatia_cup::si_3968;
+});
 
 // 2000/2001 (CM00/01 3.89 data).
 constexpr auto cm0001_389 = inherit(global_rules, [](CompetitionRules& rules) {
@@ -48,6 +50,9 @@ constexpr auto cm0001_389 = inherit(global_rules, [](CompetitionRules& rules) {
     rules.england.fa_trophy.qualification = TrophyQualification::english_lower_division;
     rules.england.conference_cup = &conference_cup_389;
     rules.unavailable_countries = cm0001_unavailable;
+    rules.croatian_first = CroatianFirstFormat::split_table_12;
+    rules.croatian_second = CroatianSecondFormat::national_table;
+    rules.croatian_cup = &croatia_cup::cm0001_389;
 });
 
 // What an edition does not mention, it takes from the global rules.
@@ -60,13 +65,19 @@ static_assert(cm0001_389.england.conference_cup && cm0001_389.unavailable_countr
 
 // Historical rule changes, per competition. Each entry needs its source and a
 // check of the seasons before, at and after it (database_seasons_checks.cpp).
-// None is verified yet: with the switch on, every competition still plays by
-// its edition's rules.
-constexpr std::array<RuleChange, 0> timeline{};
+constexpr std::array timeline{
+    RuleChange{RuleCompetition::croatian_super_cup, 2002, [](CompetitionRules& rules) {
+        rules.croatian_super_cup = CroatianSuperCupFormat::golden_goal;
+    }, "https://hnl.hr/news/11213/superkup-najavio-sjajnu-novu-nogometnu-sezonu/", true},
+    RuleChange{RuleCompetition::croatian_super_cup, 2004, [](CompetitionRules& rules) {
+        rules.croatian_super_cup = CroatianSuperCupFormat::extra_time;
+    }, "https://downloads.theifab.com/downloads/annual-general-meeting-2004-minutes?l=en"},
+};
 // The competitions whose season setup reads the seasonal rules. An entry for
 // any other would be ignored, so wire its reader first (as
 // english_rules::new_season does) and list it here.
-constexpr std::array wired{RuleCompetition::english_leagues};
+constexpr std::array wired{RuleCompetition::english_leagues, RuleCompetition::croatian_second,
+                           RuleCompetition::croatian_cup, RuleCompetition::croatian_super_cup};
 static_assert(std::ranges::all_of(timeline, [](const RuleChange& change) {
     return std::ranges::find(wired, change.competition) != wired.end();
 }), "a timeline entry names a competition nothing reads seasonally");
@@ -101,7 +112,7 @@ std::pair<bool, bool> test_presets() {
 
 CompetitionRules competition_rules(const State& s, RuleCompetition competition, int season) {
     const auto* career = s.platform ? &s.platform->career_rules() : nullptr;
-    if (!career || !career->historical_rules()) return competition_rules(s);
+    if (!career || !career->historical_rules() || career->revision() == 1) return competition_rules(s);
     const auto edition = competition_edition(s);
     const auto [english, brazilian] = test_presets();
     return with_original_presets(

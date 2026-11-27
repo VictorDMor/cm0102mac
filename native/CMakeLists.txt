@@ -38,6 +38,9 @@ target_compile_options(cm_snapshot_stream PRIVATE -Wall -Wextra -Werror -Wpedant
 target_link_libraries(cm_aot PRIVATE cm_snapshot_stream)
 target_sources(cm_aot PRIVATE vector_context.cpp)
 target_sources(cm_aot PRIVATE database_seasons.cpp database_season_screen.cpp database_season_compatibility.cpp
+    croatia_cup.cpp croatia_cup_rounds.cpp croatia_cup_entrants.cpp
+    croatia_country.cpp croatia_second.cpp croatia_second_calendar.cpp croatia_super_cup.cpp
+    croatia_first.cpp croatia_first_calendar.cpp croatia_first_split.cpp croatia_first_rollover.cpp
     competition_rules.cpp career_rules.cpp eng_fa_trophy_2000.cpp eng_conference_cup.cpp league_selection_layout.cpp)
 target_sources(cm_aot PRIVATE competition_values.cpp competition_overrides.cpp competition_defaults.cpp competition_editor_document.cpp competition_editor_text.cpp competition_editor_screen.cpp)
 target_sources(cm_aot PRIVATE adaptive_gui.cpp screen_layout.cpp search_filter_layout.cpp transfer_proposal_layout.cpp contract_negotiation_layout.cpp negotiation_dialog_layout.cpp news_inbox_layout.cpp)
@@ -441,6 +444,17 @@ target_compile_options(cm-main-program-checks PRIVATE -Wall -Wextra -Werror -Wpe
 # The registers the C++ leaves different (r0, r11, r12, CTR, the carry, and
 # r3 after a routine that returns nothing) are never read around MAIN.CPP.
 find_package(Python3 REQUIRED COMPONENTS Interpreter)
+set(CM_CRO_CUP_RULES "${CMAKE_CURRENT_SOURCE_DIR}/../rules/competitions/croatian-cup.json")
+set(CM_CRO_CUP_COMPILER "${CMAKE_CURRENT_SOURCE_DIR}/../tools/compile_croatian_cup.py")
+set(CM_CRO_CUP_PROFILES "${CMAKE_CURRENT_BINARY_DIR}/croatia_cup_profiles.inc")
+add_custom_command(OUTPUT "${CM_CRO_CUP_PROFILES}"
+    COMMAND "${Python3_EXECUTABLE}" "${CM_CRO_CUP_COMPILER}" "${CM_CRO_CUP_RULES}" "${CM_CRO_CUP_PROFILES}"
+    DEPENDS "${CM_CRO_CUP_COMPILER}" "${CM_CRO_CUP_RULES}" VERBATIM)
+target_sources(cm_aot PRIVATE croatia_cup_profile.cpp croatia_cup_lifecycle.cpp "${CM_CRO_CUP_PROFILES}")
+set_source_files_properties(croatia_cup_profile.cpp PROPERTIES INCLUDE_DIRECTORIES "${CMAKE_CURRENT_BINARY_DIR}")
+add_test(NAME croatian_cup_profile_authoring COMMAND "${Python3_EXECUTABLE}"
+    "${CMAKE_CURRENT_SOURCE_DIR}/../tools/test_croatian_cup_profile.py")
+
 add_test(NAME main_program_volatile_audit
          COMMAND "${Python3_EXECUTABLE}" "${CMAKE_SOURCE_DIR}/../tools/test_main_program_audit.py")
 add_test(NAME generator_workers COMMAND "${Python3_EXECUTABLE}" "${CMAKE_SOURCE_DIR}/../tools/test_generator_workers.py")
@@ -737,6 +751,9 @@ add_test(NAME tactics_routines_ui
 find_package(Python3 REQUIRED COMPONENTS Interpreter)
 add_test(NAME generated_block_accounting
          COMMAND "${Python3_EXECUTABLE}" "${CMAKE_SOURCE_DIR}/../tools/test_block_accounting.py")
+add_executable(cm-cup-order-389-checks cm0001_cup_order_checks.cpp)
+target_compile_options(cm-cup-order-389-checks PRIVATE -Wall -Wextra -Werror -Wpedantic)
+add_test(NAME cup_order_389 COMMAND cm-cup-order-389-checks)
 add_test(NAME generated_profiling_boundaries
          COMMAND "${Python3_EXECUTABLE}" "${CMAKE_SOURCE_DIR}/../tools/test_profiling_boundaries.py")
 # Production pages call C++ owners in place; references keep the dispatcher.
@@ -2592,6 +2609,20 @@ endif()
 add_executable(cm-database-seasons-checks database_seasons_checks.cpp)
 target_link_libraries(cm-database-seasons-checks PRIVATE cm_aot)
 target_compile_options(cm-database-seasons-checks PRIVATE -Wall -Wextra -Werror -Wpedantic)
+if(EXISTS "${CM_ORACLE_DIR}/instructions.sqlite")
+    set(CM_CRO_CUP_REFERENCE "${CMAKE_CURRENT_BINARY_DIR}/croatian_cup_reference.cpp")
+    add_custom_command(OUTPUT "${CM_CRO_CUP_REFERENCE}"
+        COMMAND "${Python3_EXECUTABLE}" "${CMAKE_SOURCE_DIR}/../tools/make_croatian_cup_reference.py"
+                "${CM_ORACLE_DIR}" "${CM_CRO_CUP_REFERENCE}"
+        DEPENDS "${CMAKE_SOURCE_DIR}/../tools/make_croatian_cup_reference.py"
+                "${CMAKE_SOURCE_DIR}/../tools/compile_recomp.py" "${CMAKE_SOURCE_DIR}/../tools/croatian_cup_audit.py"
+                "${CM_ORACLE_DIR}/instructions.sqlite" "${CM_ORACLE_DIR}/program.json" VERBATIM)
+    target_sources(cm-database-seasons-checks PRIVATE "${CM_CRO_CUP_REFERENCE}")
+    target_compile_definitions(cm-database-seasons-checks PRIVATE CM_CROATIAN_CUP_REFERENCE=1)
+    add_test(NAME croatian_cup_inventory COMMAND "${Python3_EXECUTABLE}"
+        "${CMAKE_SOURCE_DIR}/../tools/croatian_cup_audit.py" --export "${CM_ORACLE_DIR}"
+        --production-page "${CM_GENERATED_DIR}/page_106bf.cpp")
+endif()
 add_test(NAME database_season_pack_validation COMMAND "${Python3_EXECUTABLE}" "${CMAKE_SOURCE_DIR}/../tools/test_season_databases.py")
 if(EXISTS "${CMAKE_SOURCE_DIR}/../.local/database-packs/si-3968/pack.json" AND EXISTS "${CM_MATCH_DEBUGGER_GAME_DIR}/Data/index.dam")
     if(EXISTS "${CMAKE_SOURCE_DIR}/../.local/database-packs/si-389/pack.json")
@@ -2603,6 +2634,22 @@ if(EXISTS "${CMAKE_SOURCE_DIR}/../.local/database-packs/si-3968/pack.json" AND E
             "${CMAKE_SOURCE_DIR}/../tools/check_season_databases.py" "$<TARGET_FILE:cm-database-seasons-checks>"
             "${CM_ORACLE_DIR}" "${CM_MATCH_DEBUGGER_GAME_DIR}" --english-2000)
         set_tests_properties(database_season_2000_english_competitions PROPERTIES TIMEOUT 90 RUN_SERIAL TRUE)
+        add_test(NAME database_season_2000_croatian_first COMMAND "${Python3_EXECUTABLE}"
+            "${CMAKE_SOURCE_DIR}/../tools/check_season_databases.py" "$<TARGET_FILE:cm-database-seasons-checks>"
+            "${CM_ORACLE_DIR}" "${CM_MATCH_DEBUGGER_GAME_DIR}" --croatia-first-2000)
+        set_tests_properties(database_season_2000_croatian_first PROPERTIES TIMEOUT 180 RUN_SERIAL TRUE)
+        add_test(NAME database_season_2000_croatian_second COMMAND "${Python3_EXECUTABLE}"
+            "${CMAKE_SOURCE_DIR}/../tools/check_season_databases.py" "$<TARGET_FILE:cm-database-seasons-checks>"
+            "${CM_ORACLE_DIR}" "${CM_MATCH_DEBUGGER_GAME_DIR}" --croatia-second-2000)
+        set_tests_properties(database_season_2000_croatian_second PROPERTIES TIMEOUT 180 RUN_SERIAL TRUE)
+        add_test(NAME database_season_2000_croatian_cup COMMAND "${Python3_EXECUTABLE}"
+            "${CMAKE_SOURCE_DIR}/../tools/check_season_databases.py" "$<TARGET_FILE:cm-database-seasons-checks>"
+            "${CM_ORACLE_DIR}" "${CM_MATCH_DEBUGGER_GAME_DIR}" --croatia-cup-2000)
+        set_tests_properties(database_season_2000_croatian_cup PROPERTIES TIMEOUT 180 RUN_SERIAL TRUE)
+        add_test(NAME database_season_2002_croatian_super_cup COMMAND "${Python3_EXECUTABLE}"
+            "${CMAKE_SOURCE_DIR}/../tools/check_season_databases.py" "$<TARGET_FILE:cm-database-seasons-checks>"
+            "${CM_ORACLE_DIR}" "${CM_MATCH_DEBUGGER_GAME_DIR}" --croatia-super-cup)
+        set_tests_properties(database_season_2002_croatian_super_cup PROPERTIES TIMEOUT 180 RUN_SERIAL TRUE)
     endif()
     add_test(NAME database_season_history_2002 COMMAND "${Python3_EXECUTABLE}"
         "${CMAKE_SOURCE_DIR}/../tools/check_season_databases.py" "$<TARGET_FILE:cm-database-seasons-checks>"

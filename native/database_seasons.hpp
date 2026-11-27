@@ -52,7 +52,8 @@ public:
     void preflight(std::size_t index) const;
     std::optional<std::string> data_path(std::string_view variable, std::string_view name) const;
     std::string error;
-    int previous_control = -1, next_control = -1;
+    int previous_control = -1, next_control = -1, historical_control = -1;
+    bool historical_rules = false;
 private:
     std::filesystem::path root_;
     std::vector<DatabaseSeason> packs_;
@@ -63,7 +64,7 @@ private:
     DatabaseRelease release_ = DatabaseRelease::other;
     std::optional<std::string> names_directory_;
 };
-// Added controls use original creation/picking/drawing; only these two actions
+// Added controls use original creation/picking/drawing; only the added actions
 // bypass the original handler. Calls run exclusively on the game worker.
 void database_season_before_build(State&, std::uint32_t builder);
 void database_season_after_build(State&, std::uint32_t builder);

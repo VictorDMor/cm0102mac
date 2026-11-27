@@ -60,6 +60,7 @@ DatabaseSeasons::DatabaseSeasons(std::filesystem::path runtime) : root_(runtime 
 }
 void DatabaseSeasons::begin(bool tables_present) {
     if (!enabled()) return;
+    historical_rules = false;
     selected_ = default_;
     // A cold opener performs the original load exactly once. A warm opener
     // can reuse the same source; a different/saved source must be reloaded only
@@ -71,7 +72,8 @@ void DatabaseSeasons::begin(bool tables_present) {
 void DatabaseSeasons::end() {
     active_ = suspended_ = false;
     pending_.reset();
-    previous_control = next_control = -1;
+    previous_control = next_control = historical_control = -1;
+    historical_rules = false;
 }
 void DatabaseSeasons::inspect_database_names(const std::filesystem::path& path) {
     // Embedded name data survives pruning/regeneration and is restored by the

@@ -47,7 +47,7 @@ void database_season_before_build(State& s, std::uint32_t builder) {
     if (!local_setup(c)) return;
     if (builder == 0x10334550) { seasons.end(); return; }
     if (builder != league_builder) return;
-    seasons.previous_control = seasons.next_control = -1;
+    seasons.previous_control = seasons.next_control = seasons.historical_control = -1;
     if (!seasons.active()) seasons.begin(c.u32(c.toc(-0x7b98)) != 0);
     const auto pending = seasons.pending();
     if (!pending) { database_season_limit_leagues(s); return; }
@@ -93,6 +93,10 @@ bool database_season_event(State& s, std::uint32_t handler, std::int16_t control
         return false;
     }
     if (handler != league_handler || !local_setup(c)) return false;
+    if (control >= 0 && control == seasons.historical_control) {
+        seasons.historical_rules = !seasons.historical_rules;
+        return true;
+    }
     if (control < 0 || (control != seasons.previous_control && control != seasons.next_control)) return false;
     // Selection is deferred until the monitor has destroyed the old controls.
     seasons.request(control == seasons.previous_control ? -1 : 1);
@@ -130,6 +134,10 @@ void database_season_after_build(State& s, std::uint32_t builder) {
         seasons.previous_control = control(center - 135, center - 101, "<", true, seasons.selected() > 0, 0x7000);
         control(center - 96, center + 96, seasons.packs()[seasons.selected()].label, false, true, 0);
         seasons.next_control = control(center + 101, center + 135, ">", true, seasons.selected() + 1 < seasons.packs().size(), 0x7001);
+        const bool portuguese = c.u8(c.r(2) - 0x35ac) == 9;
+        const auto label = portuguese ? (seasons.historical_rules ? "Regras realistas: Sim" : "Regras realistas: N\x8bo")
+                                      : (seasons.historical_rules ? "Historical rules: On" : "Historical rules: Off");
+        seasons.historical_control = control(center + 145, panel.right - 8, label, true, true, 0x7002);
     }
     // Keep file failures visible; the previous complete database remains selected.
     if (!seasons.error.empty()) {

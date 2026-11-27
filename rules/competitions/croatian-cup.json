@@ -1,0 +1,32 @@
+{
+  "editions": {
+    "cm0001_389": "national",
+    "cm0102": "regional",
+    "si_3968": "regional"
+  },
+  "prize_pool": 100000,
+  "seed_range": 50,
+  "rounds": [
+    {"stage": "preliminary", "new_entrants": 32, "match_flags": 0, "fixture_rule": 4, "legs": 1, "gap": 0, "draw": "07-16 Fri", "fixture": "08-15 Sun"},
+    {"stage": "round_of_32", "new_entrants": 16, "match_flags": 0, "fixture_rule": 4, "legs": 1, "gap": 0, "draw": "08-20 Fri", "fixture": "09-22 Wed"},
+    {"stage": "round_of_16", "new_entrants": 0,  "match_flags": 0, "fixture_rule": 4, "legs": 1, "gap": 0, "draw": "09-24 Fri", "fixture": "10-27 Wed"},
+    {"stage": "quarterfinal", "new_entrants": 0,  "match_flags": 1, "fixture_rule": 4, "legs": 2, "gap": 14, "draw": "10-29 Fri", "fixture": "11-07 Wed"},
+    {"stage": "semifinal",    "new_entrants": 0,  "match_flags": 3, "fixture_rule": 4, "legs": 2, "gap": 14, "draw": "11-23 Fri", "fixture": "+03-20 Wed"},
+    {"stage": "final",        "new_entrants": 0,  "match_flags": 1, "fixture_rule": 6, "legs": 2, "gap": 7,  "draw": "+04-04 Thu", "fixture": "+05-24 Wed"}
+  ],
+  "profiles": {
+    "regional": {
+      "first_places": 16, "second_places": 32, "lower_places": 0, "lower_pool_limit": 0,
+      "second_division": "regional_groups", "second_order": "database"
+    },
+    "national": {
+      "first_places": 12, "second_places": 18, "lower_places": 18, "lower_pool_limit": 200,
+      "second_division": "national_table", "second_order": "seed_then_reputation",
+      "round_overrides": {
+        "quarterfinal": {"fixture": "+03-08 Wed", "gap": 7},
+        "semifinal": {"draw": "+03-17 Fri", "fixture": "+04-05 Wed"},
+        "final": {"draw": "+04-20 Thu", "fixture": "+05-03 Wed", "gap": 11}
+      }
+    }
+  }
+}

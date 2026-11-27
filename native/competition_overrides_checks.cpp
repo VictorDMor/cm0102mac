@@ -256,7 +256,7 @@ void check_member() {
     expect(reread.competition_overrides() == replacement && reread.text(CompetitionEdition::cm0102) == text, "the replaced member reads back");
     // A member this build keeps opaque applies none and refuses a replacement.
     CareerRules opaque;
-    const std::string unknown = "CM-NATIVE-RULES 1\nedition cm0102\nrevision 2\nvalue league 12 league.points.win 2\n";
+    const std::string unknown = "CM-NATIVE-RULES 1\nedition cm0102\nrevision 3\nvalue league 12 league.points.win 2\n";
     opaque.read(unknown);
     expect(opaque.competition_overrides().empty() && !opaque.set_competition_overrides(replacement) &&
            opaque.text(CompetitionEdition::cm0102) == unknown, "an unknown revision applies no value and stays verbatim");

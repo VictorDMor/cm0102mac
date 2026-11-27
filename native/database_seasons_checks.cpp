@@ -1,5 +1,6 @@
 #include "database_seasons.hpp"
 #include "career_rules.hpp"
+#include "croatia_super_cup.hpp"
 #include "season_competition_rules.hpp"
 #include "guest_abi.hpp"
 #include "platform.hpp"
@@ -9,11 +10,19 @@
 #include "form_layout.hpp"
 #include "gui_guest_scope.hpp"
 #include "routine_check.hpp"
+#include "semantic_io_checks.hpp"
+#include "comp_detail.hpp"
+#include "comp_util_detail.hpp"
 #include <fstream>
 #include <iostream>
 #include <sstream>
 #include <algorithm>
 #include <array>
+#include <chrono>
+
+#ifdef CM_CROATIAN_CUP_REFERENCE
+namespace cm::aot { bool croatian_cup_reference(State&); }
+#endif
 
 using namespace cm::aot;
 namespace {
@@ -43,6 +52,19 @@ struct DisplayFixture final : CodeFragmentBoundaryObserver {
 void require(bool ok, const char* message) { if (!ok) throw std::runtime_error(message); }
 std::vector<unsigned>* constructor_rows=nullptr;
 std::vector<unsigned> constructor_targets;
+struct CroatianFixture {
+    unsigned home, away, day, year, round, owner, definition, flags = 0;
+};
+std::vector<CroatianFixture>* croatian_fixtures=nullptr;
+bool isolate_croatian_cup=false;
+unsigned cup_fixture_allocation=0, cup_fixture_allocation_size=0;
+struct RolloverObservers {
+    std::vector<unsigned> vacancies, notifications;
+};
+RolloverObservers* croatian_rollover=nullptr;
+bool preparing_croatian_world=false;
+unsigned synthetic_super_cup_result=0;
+struct CompetitionServicesReady {};
 bool constructing_england=false;
 unsigned fixture_insertions=0;
 std::vector<std::string>* survey_messages=nullptr;
@@ -55,11 +77,50 @@ std::string survey_country(guest::Cpu& c) {
     std::string name; for(unsigned j=0;j<50 && c.u8(nation + 0xae + j);++j) name+=char(c.u8(nation + 0xae + j));
     return name;
 }
+bool observe_croatian_cup_lifecycle(State&);
 bool reject_dialog(State& s) {
+    if(observe_croatian_cup_lifecycle(s))return true;
+#ifdef CM_CROATIAN_CUP_REFERENCE
+    if(croatian_cup_reference(s))return true;
+#endif
     // Exercise the real competition constructors and participant selectors.
     // Scheduling inserts are outside this fixture: no full career/fixture
     // manager is created, and all writes remain in the disposable runtime.
-    if(constructing_england && s.pc==0x104888f0) {
+    if(cup_fixture_allocation && s.pc==0x10775130 && s.r<4>(12)==cup_fixture_allocation_size) {
+        guest::Cpu c(s); c.set(3,cup_fixture_allocation); s.pc=c.lr(); return true;
+    }
+    if(croatian_rollover && s.pc==0x101aaa90) {
+        guest::Cpu c(s);
+        require(c.lr()==0x1049f820,"Unexpected manager search during Croatian rollover");
+        croatian_rollover->vacancies.push_back(c.r(4));
+        s.pc=c.lr(); return true;
+    }
+    if(croatian_rollover && s.pc==0x102d46c0) {
+        guest::Cpu c(s);
+        croatian_rollover->notifications.push_back(c.r(4));
+        c.set(3,1); s.pc=c.lr(); return true;
+    }
+    if(preparing_croatian_world && s.pc==0x10191cd0)throw CompetitionServicesReady{};
+    if(synthetic_super_cup_result &&
+       ((s.pc==0x104537b0 && s.r<4>(16)==synthetic_super_cup_result) ||
+        ((s.pc==0x10383410 || s.pc==0x10383b70) && s.r<4>(20)==synthetic_super_cup_result) ||
+        (s.pc==0x10748ce0 && (s.r<4>(4128)==0x1000d41c || s.r<4>(4128)==0x1000d490)))) {
+        // This fixture supplies a score without a MATCH_DAY player-statistics context.
+        s.wr<4>(12,0);
+        s.pc=s.r<4>(4128); return true;
+    }
+    if(isolate_croatian_cup && s.pc==0x106bf0f0) {
+        guest::Cpu c(s);
+        c.put32(c.r(3)+4,c.r(5));
+        s.pc=c.lr(); return true;
+    }
+    if((constructing_england || croatian_fixtures) && s.pc==0x104888f0) {
+        if(croatian_fixtures) {
+            guest::Cpu c(s);
+            const auto match=c.r(4);
+            croatian_fixtures->push_back({c.u32(match+0x1c),c.u32(match+0x20),
+                c.u16(match+0x2a),c.u16(match+0x28),c.u16(match+0x34),c.u8(match+0x42),c.u32(match+0x14),c.u16(match+0x38)});
+        }
         ++fixture_insertions;
         s.wr<4>(12,1);
         s.pc=s.r<4>(4128); return true;
@@ -251,6 +312,8 @@ void check_conference_cup(State& s, unsigned cup) {
 void check_edition_rules(const State& s, unsigned year) {
     const auto expected=year==2000?CompetitionEdition::cm0001_389:year==2002?CompetitionEdition::si_3968:CompetitionEdition::cm0102;
     require(competition_edition(s)==expected,"Database did not select its competition edition");
+    require(edition_rules(expected).croatian_first==(year==2000?CroatianFirstFormat::split_table_12:
+            CroatianFirstFormat::single_table_16),"Croatian A1 format leaked across editions");
     // The checked-in edition, without the environment's test presets.
     const auto& rules=edition_rules(competition_edition(s));
     require(rules.england.promotion.conference_promoted==global_rules.england.promotion.conference_promoted &&
@@ -299,7 +362,7 @@ void check_career_rules_text() {
     using namespace std::string_view_literals;
     for(std::string_view unknown:{"CM-NATIVE-RULES 2\nedition cm0102\nrevision 1\nset brazil.serie_b_single_table 0\n"sv,
                                   "CM-NATIVE-RULES 1\nedition cm0304\nrevision 1\nset brazil.serie_b_single_table 0\n"sv,
-                                  "CM-NATIVE-RULES 1\nedition cm0102\nrevision 2\nset brazil.serie_b_single_table 0\n"sv,
+                                  "CM-NATIVE-RULES 1\nedition cm0102\nrevision 3\nset brazil.serie_b_single_table 0\n"sv,
                                   "CM-NATIVE-RULES 1\nedition cm0102\n"sv,"garbage\0bytes\n"sv}) {
         ignored=career.read(unknown);
         require(ignored.size()==1 && !career.edition() && !career.customized() &&
@@ -363,8 +426,18 @@ void check_rule_timelines() {
     const auto later=resolve_rules(edition,timeline,true,nullptr,RuleCompetition::english_leagues,2030,2004).england.promotion;
     require(later.conference_promoted==2 && later.third_relegated==3 && later.playoff_clubs==8,
             "A change from before the edition's season was applied over its rules");
-    // No change is verified yet, so the checked-in timelines are empty.
-    require(rule_timeline().empty(),"A historical rule change was added without its season checks");
+    const auto super_cup=[&](CompetitionEdition source,int baseline,int season,bool historical) {
+        return resolve_rules(edition_rules(source),rule_timeline(),historical,nullptr,
+                             RuleCompetition::croatian_super_cup,season,baseline).croatian_super_cup;
+    };
+    using Format=CroatianSuperCupFormat;
+    require(super_cup(CompetitionEdition::cm0001_389,2000,2001,true)==Format::absent &&
+            super_cup(CompetitionEdition::cm0102,2001,2002,true)==Format::golden_goal &&
+            super_cup(CompetitionEdition::si_3968,2002,2002,true)==Format::golden_goal &&
+            super_cup(CompetitionEdition::si_3968,2002,2003,true)==Format::golden_goal &&
+            super_cup(CompetitionEdition::si_3968,2002,2004,true)==Format::extra_time &&
+            super_cup(CompetitionEdition::si_3968,2002,2005,false)==Format::absent,
+            "Croatian Super Cup historical season or golden goal boundary");
 }
 
 void check_english_construction(State& s) {
@@ -665,7 +738,7 @@ void check_layout(State& s) {
         database_season_after_build(s,0x10335500);
         require(s.registers==registers && s.unique==unique && s.pc==pc &&
                 s.memory.copy_out(sp-0x8000,0x8000)==stack && random_state(s)==rng,"League layout changed ABI/stack/RNG");
-        require(c.u16(display+0x129da6)==count+3,"Season selector missing");
+        require(c.u16(display+0x129da6)==count+4,"Season selector or historical rules toggle missing");
         for(unsigned i=0;i<count;++i)
             require(c.u32(control(i)+8)==actions[i*2] && c.u32(control(i)+0x48)==actions[i*2+1],"Original league action or nation changed");
         int countries=-1;
@@ -676,7 +749,7 @@ void check_layout(State& s) {
         require(box.top>=225 && box.bottom<=canvas.height-65 && box.left>=110 && box.right<=canvas.width-20,
                 "League table overlaps selector/footer or escapes canvas");
         require(c.u8(grid(countries)+0xbb1)<=30,"League table exceeds original row capacity");
-        for(int id:{seasons.previous_control,seasons.next_control}) {
+        for(int id:{seasons.previous_control,seasons.next_control,seasons.historical_control}) {
             require(id>=0 && unsigned(id)>=count,"Invalid season control id");
             const auto at=control(id); const auto button=rect(at+0x10);
             require(button.bottom<=box.top && button.top>=145 && button.width()>=30,"Season control overlaps leagues");
@@ -688,8 +761,20 @@ void check_layout(State& s) {
             }
         }
     }
+    require(!seasons.historical_rules && database_season_event(s,0x103366f0,seasons.historical_control) &&
+            seasons.historical_rules,"Click did not enable historical rules");
+    s.platform->career_load_reset();
+    require(s.platform->career_rules().historical_rules() && s.platform->career_rules().revision()==2,
+            "New Game did not adopt the historical rules selection");
+    require(database_season_event(s,0x103366f0,seasons.historical_control) && !seasons.historical_rules,
+            "Click did not disable historical rules");
+    s.platform->career_load_reset();
     std::cout<<"League Yoga geometry, original actions, selector picking and ABI/RNG passed\n";
 }
+#include "croatia_first_checks.hpp"
+#include "croatia_second_checks.hpp"
+#include "croatia_cup_checks.hpp"
+
 void check_missing_pack(State& s, const std::filesystem::path& runtime) {
     guest::Cpu c(s); auto& seasons=s.platform->database_seasons();
     const auto file=runtime/"Files/Databases"/seasons.packs()[seasons.default_index()].directory/"Data/index.dam";
@@ -910,10 +995,14 @@ int main(int argc,char**argv) {
         check_career_rules_text();
         check_rule_timelines();
         const bool english_only=argc==5 && std::string_view(argv[4])=="--english-2000";
+        const bool croatia_only=argc==5 && std::string_view(argv[4])=="--croatia-first-2000";
+        const bool croatia_second=argc==5 && std::string_view(argv[4])=="--croatia-second-2000";
+        const bool croatia_cup=argc==5 && std::string_view(argv[4])=="--croatia-cup-2000";
+        const bool croatia_super=argc==5 && std::string_view(argv[4])=="--croatia-super-cup";
         const bool survey=argc==5 && std::string_view(argv[4])=="--survey-2000";
-        if(argc!=4 && (argc!=5 || (!english_only && !survey && std::string_view(argv[4])!="--history-2002")))
-            throw std::runtime_error("Usage: cm-database-seasons-checks PROGRAM GAME PRIVATE_RUNTIME [--history-2002|--english-2000]");
-        const bool history_only=argc==5 && !english_only && !survey;
+        if(argc!=4 && (argc!=5 || (!english_only && !croatia_only && !croatia_second && !croatia_cup && !croatia_super && !survey && std::string_view(argv[4])!="--history-2002")))
+            throw std::runtime_error("Usage: cm-database-seasons-checks PROGRAM GAME PRIVATE_RUNTIME [--history-2002|--english-2000|--croatia-first-2000|--croatia-second-2000|--croatia-cup-2000|--croatia-super-cup|--survey-2000]");
+        const bool history_only=argc==5 && std::string_view(argv[4])=="--history-2002";
         auto state=std::make_unique<State>(); auto& s=*state;
         load_program(s,argv[1]);
         dispatch_probe=reject_dialog;
@@ -977,8 +1066,10 @@ int main(int argc,char**argv) {
         if (!seasons.names_directory() || *seasons.names_directory()!=temporary_names)
             throw std::runtime_error("Database temporary-directory resolution: ["+
                                      seasons.names_directory().value_or("<missing>")+"] expected ["+temporary_names+"]");
-        const std::vector<std::size_t> sequence=english_only||survey?std::vector<std::size_t>{1,0}:history_only?std::vector<std::size_t>{original,updated,original,updated}:
+        const std::vector<std::size_t> sequence=croatia_super?std::vector<std::size_t>{updated}:
+            (croatia_only||croatia_second||croatia_cup)?std::vector<std::size_t>{1,2,1,0}:english_only||survey?std::vector<std::size_t>{1,0}:history_only?std::vector<std::size_t>{original,updated,original,updated}:
             std::vector<std::size_t>{1,0,1,2,1,0,1,2};
+        bool croatia_mac_checked=false;
         for(auto index:sequence) {
             if(index!=seasons.selected())require(seasons.request(index>seasons.selected()?1:-1),"Queue season switch");
             invoke(s,0x10719560,{display,1});
@@ -1013,6 +1104,19 @@ int main(int argc,char**argv) {
                 require(c.u16(row+0x2e)>=year && c.u16(row+0x2e)<=year+1,"League start year");
             }
             std::cout<<seasons.packs()[index].label<<": clubs="<<club_count<<" staff="<<staff_count<<" year="<<c.u16(c.toc(-0x7b80)+2)<<std::endl;
+            if(croatia_super) { check_croatia_second(s,year,true); return 0; }
+            if(croatia_only || croatia_second || croatia_cup) {
+                require(competition_rules(s).croatian_first==(year==2000?CroatianFirstFormat::split_table_12:
+                        CroatianFirstFormat::single_table_16),"Active Croatian A1 rules leaked across database switches");
+                if(year!=2001 || !croatia_mac_checked) {
+                    if(croatia_cup)check_croatia_cup(s,year);
+                    else if(croatia_second)check_croatia_second(s,year);
+                    else check_croatia_first(s,year);
+                    if(year==2001)croatia_mac_checked=true;
+                }
+                if(year==2000)return 0;
+                continue;
+            }
             if(year==2000 && survey) { survey_constructors(s); return 0; }
             if(year==2000 && english_only) { check_english_construction(s); return 0; }
             if(year==2000) { check_legacy_boundaries(s); check_layout(s); check_archive(s); seasons.begin(true); }

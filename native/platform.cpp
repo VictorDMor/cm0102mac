@@ -2197,6 +2197,8 @@ void NativePlatform::career_load_reset() {
     impl_->career_present = true;
     impl_->forget_career_rules();
     impl_->install_custom_database();
+    if (impl_->seasons->active() && impl_->seasons->historical_rules)
+        impl_->career_rules.set_historical_rules(true);
 }
 void NativePlatform::quick_save_load_end(State& s) {
     impl_->seasons->resume();

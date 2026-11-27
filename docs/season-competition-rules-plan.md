@@ -6,6 +6,63 @@ edition) and carries the competition rules the port decides today. England's 200
 pilot (Conference, FA Trophy, Conference Cup) runs through it. Career-level
 overrides, their persistence and the remaining league exclusions are open.
 
+## Authoring seasons from historical sources (2026-11-26)
+
+An authored pack such as 2003/04 starts from dated football records. An original
+CM executable is an optional reference for a recreation. Community update
+patches are outside the input set for authored packs.
+
+- Identify the pack by a stable ID and revision, with an explicit start date
+  and data cutoff. Keep stable club, person and competition IDs across seasons
+  and record dated changes such as transfers, appointments and renamings.
+  Materialize the snapshot for a new game from these records. The snapshot
+  includes the preceding season's standings and cup winners where qualification
+  requires them. Results after the cutoff belong in verification fixtures.
+- Source squads, staff, contracts, division memberships and eligibility from
+  contemporary records. Cite each source and the date it supports. Keep
+  unknowns explicit and label estimates separately (especially CM-style
+  playing attributes and potential). Carry a prior value forward only with a
+  stated basis. Use association regulations for formats and cross-check
+  against published participant lists, fixture dates and tables.
+- Give each competition a stable identity and effective-season rules. Authors
+  describe entry sources, stages, advances, tiebreaks, leg counts, draw
+  restrictions and calendar constraints using reusable native policies.
+  Implement a missing mechanism once in C++ and expose it to every pack.
+  When a competition changes format, one effective-season entry supplies both
+  a new game's starting rules and the reform for older careers following
+  historical changes. Save the pack ID and pinned rule revision with the career.
+- Compile and validate authored inputs before listing a pack in New Game.
+  Check missing IDs, memberships at the cutoff, qualification dependencies,
+  entrant and bye counts, dates and balanced division movements. Use published
+  historical outcomes to test the opening field and known rules. During a
+  career subsequent qualifiers come from the simulated results. Exercise one
+  season transition and save/reload as well as the first draw.
+
+One acceptance case for 2003/04 is the Champions League: 32 clubs in eight
+groups of four, followed by a 16-team, two-leg knockout round. The UEFA
+announcement specifies the effective season and the preceding format.
+[UEFA announcement, 11 July 2002](https://www.uefa.com/uefachampionsleague/news/025a-0eab034a2393-c36661944dab-1000--new-format-for-champions-league/)
+
+The Croatian Cup is the first authored competition. Edit
+[`rules/competitions/croatian-cup.json`](../rules/competitions/croatian-cup.json)
+and rebuild. The three editions select named profiles. All use the same six
+rounds; each profile can override individual round fields. First and second
+division places cover every club in those divisions. Lower places select the
+front of the ranked, partly shuffled domestic pool. New entrants join in the
+order lower division, second division, first division; the bracket adds each
+preceding round's winners. Calendar anchors use month-day and the nearest
+named weekday; a leading `+` selects the next calendar year. The gap is the
+number of days between legs. The compiler checks the draw, fixtures and leg
+spacing across the Gregorian cycle before embedding the profiles in the app.
+The runtime uses the existing seasonal resolver and serialized cup records.
+
+Deferred work for authored databases: use catalog IDs and rule revisions
+through pack validation, New Game and saves, retaining recognition of existing
+saves. Prove the authoring flow with a small 2003/04 pack before populating a
+whole season. Today the pack publisher and native catalog only accept
+2000–2002, and the rules registry uses three compiled-in editions. The existing
+TOML competition-value overrides do not yet define a full tournament.
+
 ## The registry (2026-11-17)
 
 `native/season_competition_rules.hpp` declares `CompetitionRules`: one struct
@@ -103,8 +160,8 @@ the career's user overrides last. Keep distinct algorithms behind named
 policies. A future editor can expose the validated fields and compatible
 policies. Store a stable profile revision and the user overrides in the save,
 so a later update to the defaults cannot change an existing career's rules.
-Use checked-in C++23 definitions. Add a data-file parser if external authoring
-becomes a requirement.
+The initial three editions use checked-in C++23 definitions. Authored seasons
+require a validated data format for reusable competition policies as described above.
 
 A rule profile is keyed by **source edition, logical competition and revision**,
 not by the current calendar year or raw database ordinal. A career beginning
@@ -138,21 +195,55 @@ The resolver exists (2026-11-17): `RuleChange` entries in the `timeline`
 table of `competition_rules.cpp`, resolved by
 `competition_rules(state, RuleCompetition, season)`. A season is the calendar
 year it starts in, taken from the competition object being configured. An
-edition's rules are those of its own first season, so only later entries
-apply to it. The table is empty: no change is verified yet. To add one:
+edition's starting rules normally cover its first season. An opt-in
+historical addition that the baseline engine omitted can explicitly include
+that season. To add a change:
 
 1. Wire the competition's season setup to the seasonal call, as
-   `english_rules::new_season` does for English promotion and relegation
-   (the only reader so far), and list it in `wired`; the build refuses an
+   `english_rules::new_season` does for English promotion and relegation,
+   and list it in `wired`; the build refuses an
    entry for a competition nothing reads seasonally.
-2. Add the entry with its source, and its seasons before, at and after to
-   `check_rule_timelines` (`database_seasons_checks.cpp`), replacing the
-   check that the table is empty.
+2. Add the entry with its source and cover the seasons before, at and after
+   the change in `check_rule_timelines` (`database_seasons_checks.cpp`).
 3. Raise `rules_revision` and keep the previous revision resolvable
    (`career_rules.hpp`).
 
 A reform that reaches simulation results needs Victor's approval first, like
 any other change of rules.
+
+#### Croatian Super Cup
+
+SI 3.9.68 (2002/03) contains the `Croatian Super Cup` definition (id 197).
+The Mac database resolver (`0x10160080`, TOC slot `-0x6adc`) finds it by name.
+The Croatian constructor (`0x10350bb0`) creates A1, A2A, A2B and the domestic
+cup. A focused run with the 2002/03 database confirmed those four objects,
+no Super Cup fixture, and an A1 opening date of 27 July 2002. The 2002/03
+database gives NK Zagreb and Dinamo Zagreb the 2001/02 league and cup titles
+respectively. Its Super Cup results stop at rows labeled 1998.
+
+- The integration reuses the resolved Super Cup definition and the cup and fixture-manager
+  storage. On New Game, schedule after A1 supplies its opening date. On a
+  career's annual transition, capture both completed-season winners before
+  the country loop resets the competitions (`0x101312ac`–`0x101313b0`), and
+  publish the tie after rebuilding the calendar. Imported history labels the
+  prior season by its start year. The native history appender (`0x10463990`)
+  uses the game's current date year. Use the exact prior-season history for a
+  fresh start and completed competition state on rollover to avoid mixing
+  those conventions or falling back to a stale winner.
+- The first official fixture is one match at the league winner's ground,
+  seven days before the first league round (20 July 2002 for SI 3.9.68).
+  Golden goal applies to the 2002/03 and 2003/04 editions. From 2004/05,
+  the match uses regular extra time, then penalties if needed. A club holding both titles leaves no
+  fixture or winner for that edition. Missing qualifiers leave the edition
+  unscheduled. [HNL history](https://hnl.hr/news/11213/superkup-najavio-sjajnu-novu-nogometnu-sezonu/) ·
+  [Dinamo match record](https://gnkdinamo.hr/en/timeline/664) ·
+  [IFAB 2004 minutes](https://downloads.theifab.com/downloads/annual-general-meeting-2004-minutes?l=en).
+- Choose **Historical rules** on the New Game league-selection screen. The
+  toggle adopts revision 2, which can apply the Super Cup from the starting
+  season of SI 3.9.68. Revision 1 saves retain their previous timeline. The
+  archived cup member and the fixture manager restore an already scheduled
+  edition independently of the switch. Loading without that member does
+  not create a fixture for the current season.
 
 ## Rule contents and validation
 

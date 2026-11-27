@@ -9,6 +9,7 @@
 #include <vector>
 
 namespace cm::aot {
+inline constexpr unsigned current_rules_revision = 2;
 // A date as the game keeps it: the day of the year counted from 0, and the year.
 struct HolidayDate {
     std::int16_t day = 0;
@@ -74,13 +75,18 @@ public:
 
     // The edition a member pinned; without one the database names decide.
     std::optional<CompetitionEdition> edition() const { return edition_; }
+    unsigned revision() const { return revision_; }
     // Whether the career follows its competitions' historical timelines
     // ("Regras realistas"). Off for careers saved without the switch.
     bool historical_rules() const { return historical_rules_; }
     // False for a member this build keeps without interpreting: changing
     // anything would be lost, since its text is written back as read.
     bool editable() const { return !opaque_; }
-    void set_historical_rules(bool on) { if (editable()) historical_rules_ = on; }
+    void set_historical_rules(bool on) {
+        if (!editable()) return;
+        historical_rules_ = on;
+        if (on) revision_ = current_rules_revision;
+    }
     // The pinned edition's rules with the career's overrides, under each test
     // preset, or null when it has no override.
     const RulePresets* customized() const { return customized_ ? &*customized_ : nullptr; }
@@ -110,6 +116,7 @@ public:
 
 private:
     std::optional<CompetitionEdition> edition_;
+    unsigned revision_ = 1;
     bool historical_rules_ = false;
     // Kept verbatim when the header, edition or revision is not this build's.
     std::optional<std::string> opaque_;
@@ -135,7 +142,7 @@ std::optional<competition_overrides::Override> read_value_statement(std::string_
 // previous revision's rules and resolve members that name it.
 // It covers the historical timelines as well: adding or changing an entry is
 // a new revision, under the same obligation.
-constexpr unsigned rules_revision(CompetitionEdition) { return 1; }
+constexpr unsigned rules_revision(CompetitionEdition) { return current_rules_revision; }
 // One competition's rules in a season: the edition's (those of
 // `edition_season`), the timeline's later changes when `historical`, then the
 // career's overrides. The test presets are the caller's.

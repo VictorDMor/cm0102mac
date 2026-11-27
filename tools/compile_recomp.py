@@ -192,6 +192,7 @@ from match_eng_audit import (MATCH_ENG_ENTRIES, MATCH_ENG_LEAVES, require_match_
 from screen_manager_audit import SCREEN_MANAGER_ENTRIES, require_screen_manager_index, screen_manager_hook
 from inter_amer_cup_audit import INTER_AMER_CUP_ENTRIES, require_inter_amer_cup_index, inter_amer_cup_hook
 from euro_champ_qual_audit import EURO_CHAMP_QUAL_ENTRIES, require_euro_champ_qual_index, euro_champ_qual_hook
+from croatian_cup_audit import CROATIAN_CUP_ENTRIES, ROUTINES as CROATIAN_CUP_ROUTINES, require_croatian_cup_index
 from pol_cup_audit import POL_CUP_ENTRIES, require_pol_cup_index, pol_cup_hook
 from fifa_rankings_audit import FIFA_RANKINGS_ENTRIES, require_fifa_rankings_index, fifa_rankings_hook
 from cash_audit import CASH_ENTRIES, require_cash_index, cash_hook
@@ -1250,10 +1251,17 @@ PROFILE_OFFER_READS = {
 
 # Instructions generate_page lowers specially (beyond owner hooks and
 # quotient-free divisions); a leaf containing one is never inlined.
+SUPER_CUP_BOUNDARIES = {
+    0x10345c8c: ("extsb. r0,r3", "if (std::int8_t(s.r<4>(12))) croatia_super_cup::new_career(s);"),
+    0x10350e20: ("lwz r0,0xb8(r1)", "if (std::int8_t(s.r<4>(12)) && !croatia_super_cup::restore(s, s.r<4>(100))) s.wr<4>(12, 0);"),
+    0x101312a4: ("li r17,0x0", "croatia_super_cup::before_rollover(s, s.r<4>(84));"),
+    0x101313b4: ("cmpwi r20,0xa", "croatia_super_cup::after_rollover(s, s.r<4>(84));"),
+    0x106cfcf0: ("mfspr r0,LR", "if (croatia_super_cup::calendar(s)) return true;"),
+}
 SPECIAL_LOWERINGS = frozenset({
     0x1028d558, 0x10779ed8, 0x101195e8, 0x1071a828, 0x101fefc8, 0x10774c24, 0x10131c00, 0x104a8518, 0x10122b68,
     0x1034f1f8, 0x1034f318, 0x10345bb0, 0x10482ca0, 0x101312b8, 0x1048aa94, 0x1049dfa8, 0x10203738, 0x10147cf8, 0x10147e50, 0x101cce50, 0x10203574, 0x102036ac,
-    0x102a9e74, 0x10772774, 0x107727d4, 0x10772a94, 0x10772768}) | set(NULL_BACKGROUND_GETTER_CALLS) | set(COMMENTARY_LINE_READS) | set(FIND_LIST_TITLE_READS) | set(FIND_LIST_FILTERS) | set(PROFILE_OFFER_READS) | set(ADAPTIVE_GUI_INSTRUCTIONS) | {ADAPTIVE_BACKGROUND_BOUNDARY}
+    0x102a9e74, 0x10772774, 0x107727d4, 0x10772a94, 0x10772768}) | set(NULL_BACKGROUND_GETTER_CALLS) | set(COMMENTARY_LINE_READS) | set(FIND_LIST_TITLE_READS) | set(FIND_LIST_FILTERS) | set(PROFILE_OFFER_READS) | set(ADAPTIVE_GUI_INSTRUCTIONS) | {ADAPTIVE_BACKGROUND_BOUNDARY} | set(SUPER_CUP_BOUNDARIES)
 OWNER_HOOK = re.compile(r"if \(try_modern_(\w+)\(s, 0x[0-9a-f]+\)\) return true;")
 
 
@@ -1522,8 +1530,18 @@ def staff_score_forwarded_loads(instructions):
 
 
 def generate_page(page, instructions, selected, local_temporaries=True, userops=None, guest_context_transfers=True, exception_runtime_hooks=True, compiler_arithmetic_hooks=True, register_context_hooks=True, stdlib_core_hooks=True, time_runtime_hooks=True, import_descriptor_hooks=True, native_service_hooks=True, engine_initialization_hooks=True, utility_object_hooks=True, tree_mutation_hooks=True, aggregate_object_hooks=True, record_group_hooks=True, record_query_hooks=True, record_history_hooks=True, match_engine_hooks=True, match_actor_hooks=True, actor_construction_hooks=True, spatial_role_hooks=True, marking_pressure_hooks=True, player_decision_hooks=True, actor_motion_hooks=True, player_movement_hooks=True, match_discipline_hooks=True, match_random_hooks=True, team_spatial_hooks=True, pitch_distance_hooks=True, actor_order_hooks=True, movement_choice_hooks=True, team_line_hooks=True, ball_action_hooks=True, ball_contact_hooks=True, actor_attributes_hooks=True, awol_records_hooks=True, contract_query_hooks=True, contract_storage_hooks=True, contract_terms_hooks=True, contract_review_hooks=True, transfer_offer_hooks=True, transfer_offer_unit_hooks=True, injury_unit_hooks=True, finance_hooks=True, human_manager_hooks=True, fog_of_war_hooks=True, comp_hooks=True, league_base_hooks=True, cup_base_hooks=True, comp_util_hooks=True, player_regen_hooks=True, font_engine_hooks=True, font_cpp_hooks=True, graph_carbon_hooks=True, assertion_hooks=True, display_hooks=True, club_shortlist_storage_hooks=True, shortlist_category_hooks=True, shortlist_links_hooks=True, shortlist_recruitment_hooks=True, shortlist_assessment_hooks=True, shortlist_quotation_hooks=True, shortlist_policy_hooks=True, profile_qualification_hooks=True, contract_draft_hooks=True, contract_display_hooks=True, money_value_hooks=True, money_text_hooks=True, money_configuration_hooks=True, game_config_hooks=True, preferences_actions_hooks=True, preferences_screen_hooks=True, localization_lookup_hooks=True, localization_format_hooks=True, localization_catalog_hooks=True, range_sampling_hooks=True, match_target_hooks=True, match_selection_hooks=True, match_selection_support_hooks=True, actor_encounter_hooks=True, match_event_hooks=True, actor_flags_hooks=True, actor_effects_hooks=True, target_acceptance_hooks=True, actor_action_hooks=True, actor_policy_hooks=True, native_record_field_hooks=True, native_sort8_hooks=True, native_leaf_lowering=False, block_accounting=False, inlining=None, nontrapping_divisions=None, list_search_hooks=True, tactics_hooks=True, main_program_hooks=True, player_stats_hooks=True, shortlist_manager_hooks=True, club_history_hooks=True, club_records_hooks=True, match_pl_hooks=True, match_eng_hooks=True, eng_prm_hooks=True, eng_conf_hooks=True, eng_first_hooks=True, eng_third_hooks=True, qsort4x_hooks=True, date_hooks=True, bra_reg_central_hooks=True, bra_reg_parana_hooks=True, bra_reg_gaucho_hooks=True, european_cup_hooks=True, media_hooks=True, utils_hooks=True, file_screens_hooks=True, rng_core_hooks=True, inter_amer_cup_hooks=True, competition_retirement_hooks=True, euro_champ_qual_hooks=True, pol_cup_hooks=True, siprint_hooks=True, database_hooks=True, match_man_hooks=True, manager_manager_hooks=True, discipline_hooks=True, cup_stage_hooks=True, db_files_hooks=True, international_awards_hooks=True, nation_awards_hooks=True, fifa_rankings_hooks=True, cash_hooks=True, awol_hooks=True, dispute_hooks=True, award_manager_hooks=True, award_shortlist_hooks=True, transfer_screens_hooks=True, oceania_nations_hooks=True, news_hooks=True, news_screens_hooks=True, contract_screens_hooks=True, screen_manager_hooks=True, contract_manager_hooks=True, staff_contracts_hooks=True, simulated_stats_hooks=True, por_second_hooks=True, ger_first_hooks=True, african_nations_hooks=True,
-                  direct_owner_calls=None, register_frame_lowering=False, transfer_manager_hooks=True, bra_nat_second_hooks=True, rb_greece_hooks=True, hall_of_fame_hooks=True, national_teams_hooks=True, ruling_bodies_hooks=True):
+                  direct_owner_calls=None, register_frame_lowering=False, transfer_manager_hooks=True, bra_nat_second_hooks=True, rb_greece_hooks=True, hall_of_fame_hooks=True, national_teams_hooks=True, ruling_bodies_hooks=True, croatian_cup_hooks=True):
     enabled_hooks = {name: value for name, value in locals().items() if name.endswith('_hooks')}
+    # Only the six ABI entry points survive in production. References are
+    # generated per routine for the checker, so calls between routines can
+    # compare the original lifecycle with the current edition's native rules.
+    croatian_entries = frozenset()
+    if croatian_cup_hooks and page == 0x106bf:
+        croatian_entries = frozenset(CROATIAN_CUP_ENTRIES)
+        def keep(item):
+            address = item["address"]
+            return not any(start < address < end for start, end, _ in CROATIAN_CUP_ROUTINES)
+        instructions = [item for item in instructions if keep(item)]
     called_families = set()
     cpp_leaves = set()
     require_native_drawing_contract(instructions)
@@ -2152,6 +2170,45 @@ def generate_page(page, instructions, selected, local_temporaries=True, userops=
         code.insert(1, '#include "control_cursor.hpp"')
     if page in (0x1014d, 0x1015b, 0x1015d, 0x10335, 0x10343):
         code.insert(1, '#include "database_seasons.hpp"')
+    # CRO_A1 changes between editions. Preserve the original entry or instruction
+    # when the selected league uses the CM01/02 format.
+    croatian_first_sites = {
+        0x106dae28: "lwz r3,0x138(r1)",  # constructor after loading a saved league
+        0x106db190: "mfspr r0,LR",       # calendar
+        0x106dbcd4: "li r0,0x10",        # entrant count
+        0x106dbde0: "li r4,0x7530",      # prize seed
+        0x106dbe20: "mfspr r0,LR",       # season configuration
+        0x106dbf10: "mfspr r0,LR",       # season transition
+        0x106dc240: "mfspr r0,LR",       # playoff creation
+        0x106dc5c0: "mfspr r0,LR",       # qualification places
+        0x106dccc0: "mfspr r0,LR",       # exchange between divisions
+        0x106dcf20: "mfspr r0,LR",       # daily update
+        0x1057ea40: "lwz r3,0xc(r3)",    # split-table comparator descriptor
+    }
+    croatian_country_sites = {
+        0x10350c88: "stw r5,0xc(r25)", 0x10350d5c: "lwz r5,-0x6a44(r2)",
+        0x10350d84: "bl 0x10773520", 0x10350df0: "stw r28,0xc(r6)",
+        0x10350df4: "li r6,0x7d1",
+        0x106ae950: "lwz r30,-0x6a44(r2)", 0x106ae96c: "li r0,0x9",
+        0x106aebfc: "bl 0x10773520",
+        0x106aed20: "lwz r31,-0x6a44(r2)", 0x106aee6c: "li r0,-0x1",
+    }
+    croatian_second_sites = {
+        0x106dd4b0: "mfspr r0,LR", 0x106de140: "mfspr r0,LR",
+        0x106ddfe0: "lwz r27,-0x6a44(r2)", 0x106ddff4: "li r0,0x10",
+        0x106de11c: "li r5,0x0", 0x106deca0: "mfspr r0,LR",
+        0x106de840: "mfspr r0,LR", 0x106de4c0: "mfspr r0,LR",
+    }
+    if croatian_entries & page_addresses:
+        code.insert(1, '#include "croatia_cup.hpp"')
+    if SUPER_CUP_BOUNDARIES.keys() & page_addresses:
+        code.insert(1, '#include "croatia_super_cup.hpp"')
+    croatian_hooks = {}
+    for namespace, sites in (("croatia_first", croatian_first_sites), ("croatia_second", croatian_second_sites),
+                             ("croatia_country", croatian_country_sites),):
+        if sites.keys() & page_addresses:
+            code.insert(1, f'#include "{namespace}.hpp"')
+            croatian_hooks.update({pc: (namespace, expected) for pc, expected in sites.items()})
     if page in (0x10351, 0x104c6, 0x104c7):
         code.insert(1, '#include "season_competition_rules.hpp"')
     if any(item["address"] == 0x10774c24 for item in instructions):
@@ -2201,6 +2258,11 @@ def generate_page(page, instructions, selected, local_temporaries=True, userops=
         a = item["address"]
         code.append(f"i_{a:x}: // {item['assembly']}")
         hooks_start = len(code)
+        if a in croatian_entries:
+            code.append(f"s.step(0x{a:x});")
+            code.append(f"return croatia_cup::dispatch(s, 0x{a:x});")
+            isolated.add(a)
+            continue
         if a in PROFILE_BOUNDARIES:
             code.append(profiling_hook(a, item["assembly"]))
             isolated.add(a)
@@ -2296,6 +2358,18 @@ def generate_page(page, instructions, selected, local_temporaries=True, userops=
                 raise ValueError("FA Trophy qualifier selection boundary changed")
             code.append("if (apply_cm0001_conference_cup_entrants(s)) return true;")
             code.append("if (apply_cm0001_fa_trophy_qualifiers(s)) return true;")
+            isolated.add(a)
+        if a in croatian_hooks:
+            namespace, expected = croatian_hooks[a]
+            if item["assembly"] != expected:
+                raise ValueError(f"Croatian competition boundary changed at {a:x}")
+            code.append(f"if ({namespace}::dispatch(s, 0x{a:x})) return true;")
+            isolated.add(a)
+        if a in SUPER_CUP_BOUNDARIES:
+            expected, hook = SUPER_CUP_BOUNDARIES[a]
+            if item["assembly"] != expected:
+                raise ValueError(f"Croatian Super Cup boundary changed at {a:x}")
+            code.append(hook)
             isolated.add(a)
         if a == 0x10343630:
             if item["assembly"] != "mfspr r0,LR":
@@ -2811,7 +2885,7 @@ def generate_page(page, instructions, selected, local_temporaries=True, userops=
             if any(by_address.get(address, {}).get("assembly") != assembly
                    for address, assembly in sequence.items()):
                 raise ValueError("Annual competition loop no longer matches the audited release")
-            code.extend(["if (inter_amer_cup_retired_object(s, std::uint32_t(s.r<4>(64)))) {",
+            code.extend(["if (inter_amer_cup_retired_object(s, std::uint32_t(s.r<4>(64))) || croatia_super_cup::owns(s, s.r<4>(64))) {",
                          transfer(0x101313a4, transfer_page, selected), "}"])
             isolated.add(a)
         if competition_retirement_hooks and a == 0x102a9e74:
@@ -3427,7 +3501,7 @@ INDEX_AUDITS = (
     require_list_search, require_tactics_index, require_main_program_index, require_club_history_index,
     require_club_records_index, require_match_pl_index, require_match_eng_index, require_eng_prm_index,
     require_eng_conf_index, require_eng_first_index, require_eng_third_index, require_qsort4x_index, require_date_index, require_game_config_index, require_ruling_bodies_index, require_transfer_offer_unit_index, require_injury_unit_index, require_finance_index, require_human_manager_index, require_fog_of_war_index, require_comp_index, require_league_base_index, require_cup_base_index, require_display_index, require_bra_reg_central_index, require_bra_reg_parana_index, require_bra_reg_gaucho_index, require_european_cup_index, require_media_index, require_utils_index, require_file_screens_index,
-    require_inter_amer_cup_index, require_euro_champ_qual_index, require_pol_cup_index,
+    require_inter_amer_cup_index, require_euro_champ_qual_index, require_pol_cup_index, require_croatian_cup_index,
     require_fifa_rankings_index, require_cash_index, require_awol_index, require_siprint_index, require_database_index, require_match_man_index, require_manager_manager_index, require_discipline_index, require_cup_stage_index,
     require_transfer_manager_index, require_db_files_index, require_international_awards_index, require_nation_awards_index,
     require_dispute_index, require_award_manager_index, require_award_shortlist_index, require_transfer_screens_index,

@@ -4,6 +4,7 @@
 // callee into its row, so the non-volatile registers the original holds are set at every call (the Cpu's registers
 // stand for them: a store here mirrors the original's assignment at the same point).
 #include "comp_news.hpp"
+#include "croatia_first.hpp"
 #include "comp_texts_detail.hpp"
 
 namespace cm::aot::comp {
@@ -26,6 +27,7 @@ constexpr Wording named_kinds[4] = {{0x10450210, 0x1045021c, 0x10450234, 0x10450
 
 void league_fate_text(Cpu& c, std::uint32_t competition, std::uint32_t club, std::uint32_t kind, std::uint32_t mode, std::uint32_t pass,
                       std::uint32_t stack_byte, std::uint32_t form, std::uint32_t output) {
+    if (croatia_first::format_group_news(c, competition, kind)) return;
     const Frame frame(c, 0x10450030, 0x50, {.first_gpr = 27});
     const auto pool = c.toc(toc::pool), clubs_cell = c.toc(toc::clubs), buffer = c.toc(toc::text);
     // The prologue: r10 the pool, r29 the text buffer, r30 the competition, r28 the clubs cell, r6 a copy of the kind,

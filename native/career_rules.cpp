@@ -123,8 +123,10 @@ std::vector<std::string> CareerRules::read(std::string_view text) {
         }
     }
     if (!edition || !revision) return keep_unread("no edition or revision");
-    if (*revision != long(rules_revision(*edition))) return keep_unread("rules revision " + std::to_string(*revision) + " is not this build's");
+    if (*revision < 1 || *revision > long(rules_revision(*edition)))
+        return keep_unread("rules revision " + std::to_string(*revision) + " is not this build's");
     edition_ = edition;
+    revision_ = unsigned(*revision);
     const auto resolve = [&] {
         auto rules = edition_rules(*edition);
         for (const auto& item : overrides) item.field->set(rules, item.value);
@@ -286,7 +288,7 @@ std::string CareerRules::text(CompetitionEdition current) const {
     std::string result{header};
     result += "\nedition ";
     result += edition_name(edition);
-    result += "\nrevision " + std::to_string(rules_revision(edition));
+    result += "\nrevision " + std::to_string(revision_);
     result += historical_rules_ ? "\nhistorical_rules on\n" : "\nhistorical_rules off\n";
     for (const auto& statement : statements_) result += statement + "\n";
     return result;
