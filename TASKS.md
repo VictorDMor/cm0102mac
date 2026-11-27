@@ -3,6 +3,10 @@
 The live work list. Claude keeps it current during a run; read this instead of
 the scrollback. Remove ticked items once their commit is pushed.
 
+## Decision for Victor (2026-11-27)
+
+- [ ] **Simulated stats, a 16-character media name.** Uncommitted in `native/simulated_stats.cpp` (Codex, 2026-11-26; its check in `simulated_stats_checks.cpp`). When the stats media's first Pascal fragment is full (16 bytes), the name scan in `check_stats_media` (0x1037003c) reads the byte after it, stack the routine never wrote, and keeps copying while it is non-zero. The change reads it as 0. It got the private 2000/01 Croatia career past a fault, but it changes what the routine records relative to the generated reference, and the stack audit does not list this reader yet. Options: approve it, or record a capture that reaches it and leave there what the original leaves (the per-reader contract). The Croatia tests pass without it.
+
 ## Manager news (2026-11-26)
 
 - [x] Show a Dock badge for each scheduled human holiday return and clear it on activation or game input.
