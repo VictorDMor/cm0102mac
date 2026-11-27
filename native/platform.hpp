@@ -72,6 +72,8 @@ public:
     std::vector<float> render_audio_offline(std::uint32_t frames);
     void observe_drawing(State&, std::uint32_t pc);
     GuiCanvas gui_canvas_size() const;
+    // The host file a guest path (MacRoman, "Volume:folder:name") names, for read-only host inspection; nothing when it names none.
+    std::optional<std::filesystem::path> guest_file_path(std::string_view macroman_path) const;
     // Consumed by the local screen manager, never by an AppKit callback.
     bool request_adaptive_screen(std::uint32_t builder);
     void apply_adaptive_screen(State&, std::uint32_t display);

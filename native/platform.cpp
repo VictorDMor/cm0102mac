@@ -1831,6 +1831,12 @@ NativePlatform::NativePlatform(fs::path game, fs::path writable, AudioMode audio
 }
 NativePlatform::~NativePlatform() = default;
 GuiCanvas NativePlatform::gui_canvas_size() const { return impl_->canvas; }
+std::optional<std::filesystem::path> NativePlatform::guest_file_path(std::string_view macroman_path) const {
+    try {
+        return impl_->path(0, 0, convert(std::string(macroman_path), kCFStringEncodingMacRoman, kCFStringEncodingUTF8));
+    } catch (const FileError&) { return std::nullopt; }
+    catch (const std::exception&) { return std::nullopt; }
+}
 bool NativePlatform::request_adaptive_screen(std::uint32_t builder) {
     const auto enabled = adaptive_screen_enabled(builder);
     impl_->pending_canvas = impl_->ui ? impl_->ui->adaptive_canvas(enabled) : enabled ? impl_->canvas : GuiCanvas{};
