@@ -311,6 +311,20 @@ and the shared views in `player_stats_detail.hpp`. What it added:
   Match-actor construction's branch into 0x103058f0/0x10305ae0 was not
   reached by a real match start, and 0x10309cc0 (the transfer-rule
   predicates) by none; those three are checked by synthetic calls.
+- **New Game relations.** The stats object keeps one relations array for
+  every person. `seed_relations` appends each person's group rows unsorted,
+  and each non-player at a club abroad goes through `add_to_relation(...,
+  sort=1)`, which heapsorts the whole array (880 times over 165,403 rows on
+  the 2002/03 data): most of the "Historial de Jogadores" wait. While seeding,
+  `add_relation` sorts natively when the comparator is a strict total order
+  (distinct keys, no -1 target, persons in [0, 2^30)), where any sort gives
+  the heapsort's rows, and falls back to the qsort otherwise
+  (`RelationSeeding`; `CM_RELATION_SORT_ORIGINAL=1` forces the qsort). The
+  in-game callers (player regen, 0x1012e/0x1012f) still sort the whole array
+  per insertion. Checks: the season checker's `CM_SEASON_WORLD_DIGEST`,
+  `CM_SEASON_WORLD_DUMP` and `CM_SEASON_STACK_AUDIT` compare two runs; only
+  the TickCount word (0x10bf7518) and values derived from it differ between
+  runs.
 
 ## SHORTLIST_MANAGER.CPP: the recruitment module
 

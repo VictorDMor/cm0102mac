@@ -3,6 +3,17 @@
 The live work list. Claude keeps it current during a run; read this instead of
 the scrollback. Remove ticked items once their commit is pushed.
 
+## New Game: player relations sorted natively (Victor, 2026-11-27)
+
+Why: the "Historial de Jogadores" stage of a New Game takes minutes, and the season checks' Super Cup run (148 s) is that stage. `seed_relations` appends every person's group relations unsorted, and each non-player at a club abroad goes through `add_to_relation(..., sort=1)`, which heapsorts the whole global relations array (hundreds of thousands of entries). Finish line: Super Cup check well under 60 s; guest memory and RNG identical to the original sort through New Game creation (check plus negative control); stack-contract evidence; paired timing.
+
+- [x] Fast path in `add_relation`, only while `seed_relations` runs: sort natively when the order is unique (distinct (person, target) keys, no -1 target, persons in range), else the original qsort. `CM_RELATION_SORT_ORIGINAL=1` forces the original.
+- [x] Equivalence: relations arrays byte-identical in both modes (93,383 rows, 2000/01; 165,403, 2002/03); whole-memory dumps differ only in the TickCount word and its derived bytes; registers identical; negative control (two rows swapped) changes the digest.
+- [x] Stack audit of the New Game creation, both bases, both modes: the same 53 stale-stack readers with the same writers, counts and values.
+- [x] Paired timing: Super Cup check (2002/03 New Game), five alternating pairs, native 54.4-56.7 s against original 138.9-142.0 s, median difference -84.6 s. Review (medium) done.
+- Follow-up: in-game callers (player regen 0x102e29a8/0x102e4bac, pages 0x1012e/0x1012f) also heapsort the whole array per insertion; out of scope here.
+- Follow-up: the New Game runs slower with the app in the background (Victor): likely App Nap; the game thread should hold a user-initiated activity during long stages.
+
 ## Manager news (2026-11-26)
 
 - [x] Show a Dock badge for each scheduled human holiday return and clear it on activation or game input.

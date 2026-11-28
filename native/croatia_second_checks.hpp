@@ -323,9 +323,64 @@ void check_croatian_super_cup(State& s,unsigned country,std::vector<CroatianFixt
     std::cout<<"Croatian Super Cup launch, duplicate prevention, save member, double and annual qualification passed\n";
 }
 
+// CM_SEASON_WORLD_DIGEST=1: FNV-1a of guest memory outside the stacks
+// (0x70000000 up) and, apart, of the registers, to compare two runs of one
+// scenario (CM_RELATION_SORT_ORIGINAL=1 against the native relation sort).
+void print_world_digest(const State& s,const char* where) {
+    const char* mode=std::getenv("CM_SEASON_WORLD_DIGEST");
+    if(!mode)return;
+    guest::Cpu c(const_cast<State&>(s));
+    const auto stats=c.u32(c.toc(-0x7b3c)),relations=stats?c.u32(stats+0x3c):0u;
+    const auto relation_count=stats?c.i32(stats+0x44):0;
+    // =swap, the negative control: two neighbouring relation rows exchanged,
+    // as a sort that orders one pair wrongly would leave them.
+    if(std::string_view(mode)=="swap" && relations && relation_count>1) {
+        const auto middle=relations+std::uint32_t(relation_count/2)*8;
+        auto a=c.s.memory.copy_out(middle,8),b=c.s.memory.copy_out(middle+8,8);
+        c.s.memory.copy_in(middle,b); c.s.memory.copy_in(middle+8,a);
+    }
+    std::uint64_t rows=UINT64_C(14695981039346656037);
+    if(relations)for(const auto byte:s.memory.copy_out(relations,std::size_t(relation_count)*8))rows=(rows^byte)*UINT64_C(0x100000001b3);
+    std::cout<<"relations "<<where<<": "<<relation_count<<" rows, digest "<<std::hex<<rows<<std::dec<<std::endl;
+    std::uint64_t memory=UINT64_C(14695981039346656037),registers=memory;
+    for(const auto& [start,size]:s.memory.mapped_ranges()) {
+        if(start>=0x70000000 && start<0x80000000)continue;
+        for(const auto byte:s.memory.copy_out(start,size))memory=(memory^byte)*UINT64_C(0x100000001b3);
+    }
+    for(const auto byte:s.registers)registers=(registers^byte)*UINT64_C(0x100000001b3);
+    // CM_SEASON_WORLD_DUMP=DIR: also the memory outside the stacks, one file a
+    // point (start and size words, then the bytes, per range), to diff two runs.
+    if(const char* dump=std::getenv("CM_SEASON_WORLD_DUMP")) {
+        static unsigned point=0;
+        std::ofstream out(std::string(dump)+"/point-"+std::to_string(point++)+".bin",std::ios::binary);
+        for(const auto& [start,size]:s.memory.mapped_ranges()) {
+            if(start>=0x70000000 && start<0x80000000)continue;
+            const std::uint64_t header[2]{start,size};
+            out.write(reinterpret_cast<const char*>(header),sizeof header);
+            const auto bytes=s.memory.copy_out(start,size);
+            out.write(reinterpret_cast<const char*>(bytes.data()),std::streamsize(bytes.size()));
+        }
+    }
+    std::cout<<"world digest "<<where<<": memory "<<std::hex<<memory<<" registers "<<registers<<std::dec<<std::endl;
+}
+
 void check_croatia_second(State& s,unsigned year,bool super_cup=false) {
     guest::Cpu c(s);
     const bool legacy=year==2000;
+    // CM_SEASON_STACK_AUDIT=FILE: the complete stack audit (stack_audit.hpp) of
+    // the scenarios that build player stats, written to FILE, for the leftover
+    // contract of a rewrite inside New Game creation.
+    std::optional<StackAudit> audit;
+    const char* audit_file=(legacy || super_cup)?std::getenv("CM_SEASON_STACK_AUDIT"):nullptr;
+    if(audit_file) { audit.emplace(s); s.memory.date_observer=audit->observer(); }
+    struct AuditReport {
+        State& s; std::optional<StackAudit>& audit; const char* file;
+        ~AuditReport() {
+            if(!audit)return;
+            s.memory.date_observer=nullptr;
+            std::ofstream out(file); audit->report(out,true);
+        }
+    } audit_report{s,audit,audit_file};
     auto rows=c.toc(-0x7b44);
     unsigned country=0;
     for(unsigned i=0;i<34;++i) {
@@ -335,6 +390,7 @@ void check_croatia_second(State& s,unsigned year,bool super_cup=false) {
     require(country,"Croatian country constructor missing");
     c.put8(c.u32(country)+0x120,6);
     invoke(s,0x10191e20);
+    print_world_digest(s,"after the new world's staff stage");
     if(legacy || super_cup)prepare_croatian_rollover_services(s);
     isolate_croatian_cup=!super_cup;
     std::vector<CroatianFixture> fixtures;
@@ -361,5 +417,6 @@ void check_croatia_second(State& s,unsigned year,bool super_cup=false) {
         std::cout<<"Croatian A1/A2 save members restored; both leagues redrawn after 14 verified club movements\n";
     }
     if(super_cup)check_croatian_super_cup(s,country,fixtures);
+    print_world_digest(s,"at the end of the scenario");
     croatian_fixtures=nullptr;
 }

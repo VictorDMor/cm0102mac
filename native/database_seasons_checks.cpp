@@ -14,6 +14,7 @@
 #include "comp_detail.hpp"
 #include "comp_util_detail.hpp"
 #include <fstream>
+#include "stack_audit.hpp"
 #include <iostream>
 #include <sstream>
 #include <algorithm>

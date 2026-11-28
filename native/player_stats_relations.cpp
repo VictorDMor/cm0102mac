@@ -1,5 +1,11 @@
 #include "player_stats_detail.hpp"
+#include <algorithm>
+#include <array>
+#include <cstdio>
+#include <cstdlib>
+#include <iterator>
 #include <optional>
+#include <vector>
 
 namespace cm::aot::player_stats {
 using namespace detail;
@@ -30,6 +36,60 @@ std::optional<std::uint32_t> regional(Cpu& c, std::int32_t nation, std::int32_t 
     if (compare(c, nation, c.i32(c.toc(slot::regional_nation_4))) == 0 && compare(c, wanted, 7) == 0)
         return strong;
     return std::nullopt;
+}
+
+thread_local RelationSeeding* seeding = nullptr;
+
+// A row as the heapsort moves it: all eight bytes, the two padding bytes too.
+struct Row {
+    std::array<std::uint8_t, Relation::size> bytes;
+    std::int32_t person() const {
+        return std::int32_t(std::uint32_t(bytes[0]) << 24 | std::uint32_t(bytes[1]) << 16 |
+                            std::uint32_t(bytes[2]) << 8 | bytes[3]);
+    }
+    std::int8_t target() const { return std::int8_t(bytes[4]); }
+    // Where compare_relations is a strict total order (see RelationSeeding).
+    bool plain() const { return target() != -1 && person() >= 0 && person() < (1 << 30); }
+    friend bool operator<(const Row& a, const Row& b) {
+        return a.person() != b.person() ? a.person() < b.person() : a.target() < b.target();
+    }
+};
+bool same_key(const Row& a, const Row& b) { return a.person() == b.person() && a.target() == b.target(); }
+
+std::vector<Row> rows_at(Cpu& c, std::uint32_t address, std::uint32_t count) {
+    const auto bytes = c.s.memory.copy_out(address, std::size_t(count) * Relation::size);
+    std::vector<Row> rows(count);
+    for (std::uint32_t i = 0; i < count; ++i)
+        std::copy_n(bytes.begin() + std::ptrdiff_t(i) * Relation::size, Relation::size, rows[i].bytes.begin());
+    return rows;
+}
+
+// Puts rows [0, count) of `relations` in the order the original's heapsort
+// gives them, rows [0, sorted) being in that order already. False, with the
+// array untouched, when that order is not unique.
+bool sort_rows(Cpu& c, std::uint32_t relations, std::uint32_t sorted, std::uint32_t count) {
+    auto tail = rows_at(c, relations + sorted * Relation::size, count - sorted);
+    if (!std::ranges::all_of(tail, &Row::plain)) return false;
+    std::sort(tail.begin(), tail.end());
+    if (std::ranges::adjacent_find(tail, same_key) != tail.end()) return false;
+    // The first sorted row the tail's smallest goes before (the prefix's rows
+    // are plain and distinct: they passed here).
+    std::uint32_t low = 0, high = sorted;
+    while (low < high) {
+        const auto middle = low + (high - low) / 2;
+        if (rows_at(c, relations + middle * Relation::size, 1).front() < tail.front()) low = middle + 1;
+        else high = middle;
+    }
+    const auto moved = rows_at(c, relations + low * Relation::size, sorted - low);
+    std::vector<Row> merged;
+    merged.reserve(moved.size() + tail.size());
+    std::merge(moved.begin(), moved.end(), tail.begin(), tail.end(), std::back_inserter(merged));
+    if (std::ranges::adjacent_find(merged, same_key) != merged.end()) return false;
+    std::vector<std::uint8_t> bytes;
+    bytes.reserve(merged.size() * Relation::size);
+    for (const auto& row : merged) bytes.insert(bytes.end(), row.bytes.begin(), row.bytes.end());
+    c.s.memory.copy_in(relations + low * Relation::size, bytes);
+    return true;
 }
 
 // The original's branch-free `a == b ? value : 0`: ~((b - a) | (a - b)) >> 31.
@@ -124,6 +184,16 @@ std::uint32_t group_score(Cpu& c, std::uint32_t person, std::uint32_t group) {
     return when_equal(last, wanted, 100);
 }
 
+RelationSeeding::RelationSeeding() : previous_(seeding) {
+    original = std::getenv("CM_RELATION_SORT_ORIGINAL") != nullptr;
+    seeding = this;
+}
+RelationSeeding::~RelationSeeding() {
+    if (std::getenv("CM_RELATION_SORT_STATS"))
+        std::fprintf(stderr, "relation seeding: %u native sorts, %u original\n", native, fallback);
+    seeding = previous_;
+}
+
 void add_relation(Cpu& c, std::uint32_t stats_address, std::uint32_t person, std::uint32_t group, std::uint32_t strength,
                   std::uint32_t sort) {
     Frame frame(c, 0x10309680, 0xb0, {.first_gpr = 24});
@@ -159,6 +229,20 @@ void add_relation(Cpu& c, std::uint32_t stats_address, std::uint32_t person, std
     entry.strength() = std::int8_t(std::uint32_t(kept_strength));
     stats.relation_count() = count + 1;
     leave(c, {{3, std::uint32_t(count)}, {4, stats.relations()}, {5, std::uint32_t(id)}});
+    // Rows are only appended while seeding; anything else leaves the sorted
+    // prefix unknown, and the qsort takes over.
+    if (seeding && seeding->sorted > std::uint32_t(count + 1)) seeding->original = true;
+    if (nonzero(c, std::int8_t(sort)) && seeding && !seeding->original) {
+        // The registers and the stack below this frame stay as the append
+        // left them, not as the heapsort would (RelationSeeding).
+        if (sort_rows(c, stats.relations(), seeding->sorted, std::uint32_t(count + 1))) {
+            seeding->sorted = std::uint32_t(count + 1);
+            ++seeding->native;
+            return;
+        }
+        seeding->original = true;
+    }
+    if (seeding && nonzero(c, std::int8_t(sort))) ++seeding->fallback;
     if (nonzero(c, std::int8_t(sort)))
         program.qsort(stats.relations(), std::uint32_t(count + 1), Relation::size, c.toc(slot::compare_relations_tv),
                       0x1030983c);

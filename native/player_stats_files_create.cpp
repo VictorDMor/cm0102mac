@@ -1,5 +1,6 @@
 #include "player_stats_detail.hpp"
 #include "player_stats_files.hpp"
+#include "player_stats_relations.hpp"
 #include <bit>
 
 // The player-stats object's constructor: the CD, the history archive, then
@@ -62,6 +63,7 @@ void insert_cd(Cpu& c, const Frame& frame, std::uint32_t pool) {
 // nation's group by his years there (as an int8, 0-10, from the start
 // date's year less the year he joined his club).
 void seed_relations(Cpu& c, const Frame& frame, const Stats& stats) {
+    RelationSeeding seeding;
     Program program{c};
     const auto person_count = c.toc(slot::person_count);  // r18
     const Date start{c, c.toc(slot::start_date)};
