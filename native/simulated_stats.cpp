@@ -369,6 +369,9 @@ struct InitialStats {
 void check_stats_media(InitialStats& stats) {
     auto& c = stats.c;
     const auto frame = c.sp();
+    // The first Pascal fragment occupies exactly 16 bytes after its length.
+    // A full fragment has no copied NUL, so its scan must stop before stack residue.
+    const auto first_end = frame + 0xa9;
     do {
         block(c, 0x1036ffc4, 15);
         c.set(20, c.u32(c.r(14)));
@@ -396,7 +399,7 @@ void check_stats_media(InitialStats& stats) {
         c.put32(frame + 0x54, c.r(0));
         for (;;) {
             block(c, 0x1037003c, 3);
-            if (!record_value(c, 0, c.i8(c.r(4)))) break;
+            if (!record_value(c, 0, c.r(4) == first_end ? 0 : c.i8(c.r(4)))) break;
             block(c, 0x10370020, 7);
             c.set(6, c.u8(c.r(4)));
             c.set(4, c.r(4) + 1);

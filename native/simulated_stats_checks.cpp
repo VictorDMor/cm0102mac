@@ -44,6 +44,7 @@ constexpr auto club_count = fixture + 0x30, competitions_slot = fixture + 0x34;
 constexpr auto competitions = fixture + 0x40, competition = fixture + 0x60;
 constexpr auto media_flag = fixture + 0xa0, media_attempt = fixture + 0xa4;
 constexpr auto media_first = fixture + 0x1f00, media_second = media_first + 0x20;
+constexpr std::string_view full_media_name = "AaBbCcDdEeFfGgHhIiJjKkLlMmNnOoP";
 constexpr auto initial_clubs = fixture + 0x10000, initial_list = fixture + 0x80000;
 constexpr auto initial_rows = fixture + 0x81000;
 constexpr auto loader_resume = fixture + 0x1f80;
@@ -177,11 +178,16 @@ bool dependency(State& s) {
                         || (arg0 == c.sp() + 0x2bc && member == c.sp() + 0x1f4 && c.r(5) == 1),
                     "Stats diagnostic alert arguments");
             break;
-        case 0x1077fee0:
-            require(arg0 == 0 && member == 0 && c.r(5) == c.sp() + 0xf4 && c.r(6) == c.sp() + 0xac
-                        && c.u8(c.r(5)) == 4 && c.u32(c.r(5) + 1) == 0x41614262,
-                    "Stats media spec arguments and interleaved Pascal name");
+        case 0x1077fee0: {
+            const auto name = c.r(5);
+            const auto expected = c.u8(media_second) == 16 ? full_media_name : std::string_view("AaBb");
+            require(arg0 == 0 && member == 0 && name == c.sp() + 0xf4 && c.r(6) == c.sp() + 0xac
+                        && c.u8(name) == expected.size(),
+                    "Stats media spec arguments and Pascal name length");
+            for (unsigned i = 0; i < expected.size(); ++i)
+                require(c.u8(name + i + 1) == expected[i], "Stats interleaved Pascal name");
             break;
+        }
         case 0x10727890:
             require((arg0 == c.sp() + 0x2bc && member == pool)
                         || (arg0 == c.sp() + 0x1f4 && member == pool + 10), "Stats media warning copy");
@@ -969,6 +975,24 @@ void verify() {
     check_persistence(returned, budgets);
     check_sampler(returned, budgets);
     check_initialization(returned, budgets);
+    {
+        auto s = initial_fixture(0);
+        Cpu c(*s);
+        c.put8(media_flag, 0);
+        c.put8(media_second, 16);
+        c.put8(media_first, 15);
+        for (unsigned i = 0; i < 16; ++i) c.put8(media_second + i + 1, 'A' + i);
+        for (unsigned i = 0; i < 15; ++i) c.put8(media_first + i + 1, 'a' + i);
+        c.put8(stack - 0x3f0 + 0xa9, 0xff);
+        Services services(nullptr, nullptr);
+        s->import_descriptor_original_body = 0x1077fee0;
+        s->allocator_original = true;
+        run_until(*s, return_sentinel);
+        require(c.u8(media_attempt) == 1 && c.r(3) == object,
+                "Stats constructor should use the verified media lookup with a full fragment");
+        require(c.u8(stack - 0x3f0 + 0xf4 + 33) == 0,
+                "Stats media construction copied the byte after the full fragment");
+    }
     check_updates(returned, budgets);
     const auto inline_draws = check_inline_draws();
     check_hooks();
