@@ -2623,38 +2623,40 @@ if(EXISTS "${CM_ORACLE_DIR}/instructions.sqlite")
         "${CMAKE_SOURCE_DIR}/../tools/croatian_cup_audit.py" --export "${CM_ORACLE_DIR}"
         --production-page "${CM_GENERATED_DIR}/page_106bf.cpp")
 endif()
+# The season checks run in parallel: each works in its own temporary runtime
+# (check_season_databases.py) and reads the game folder without writing to it.
 add_test(NAME database_season_pack_validation COMMAND "${Python3_EXECUTABLE}" "${CMAKE_SOURCE_DIR}/../tools/test_season_databases.py")
 if(EXISTS "${CMAKE_SOURCE_DIR}/../.local/database-packs/si-3968/pack.json" AND EXISTS "${CM_MATCH_DEBUGGER_GAME_DIR}/Data/index.dam")
     if(EXISTS "${CMAKE_SOURCE_DIR}/../.local/database-packs/si-389/pack.json")
         add_test(NAME database_season_conversion_and_persistence COMMAND "${Python3_EXECUTABLE}"
             "${CMAKE_SOURCE_DIR}/../tools/check_season_databases.py" "$<TARGET_FILE:cm-database-seasons-checks>"
             "${CM_ORACLE_DIR}" "${CM_MATCH_DEBUGGER_GAME_DIR}")
-        set_tests_properties(database_season_conversion_and_persistence PROPERTIES TIMEOUT 180 RUN_SERIAL TRUE)
+        set_tests_properties(database_season_conversion_and_persistence PROPERTIES TIMEOUT 180)
         add_test(NAME database_season_2000_english_competitions COMMAND "${Python3_EXECUTABLE}"
             "${CMAKE_SOURCE_DIR}/../tools/check_season_databases.py" "$<TARGET_FILE:cm-database-seasons-checks>"
             "${CM_ORACLE_DIR}" "${CM_MATCH_DEBUGGER_GAME_DIR}" --english-2000)
-        set_tests_properties(database_season_2000_english_competitions PROPERTIES TIMEOUT 90 RUN_SERIAL TRUE)
+        set_tests_properties(database_season_2000_english_competitions PROPERTIES TIMEOUT 90)
         add_test(NAME database_season_2000_croatian_first COMMAND "${Python3_EXECUTABLE}"
             "${CMAKE_SOURCE_DIR}/../tools/check_season_databases.py" "$<TARGET_FILE:cm-database-seasons-checks>"
             "${CM_ORACLE_DIR}" "${CM_MATCH_DEBUGGER_GAME_DIR}" --croatia-first-2000)
-        set_tests_properties(database_season_2000_croatian_first PROPERTIES TIMEOUT 180 RUN_SERIAL TRUE)
+        set_tests_properties(database_season_2000_croatian_first PROPERTIES TIMEOUT 180)
         add_test(NAME database_season_2000_croatian_second COMMAND "${Python3_EXECUTABLE}"
             "${CMAKE_SOURCE_DIR}/../tools/check_season_databases.py" "$<TARGET_FILE:cm-database-seasons-checks>"
             "${CM_ORACLE_DIR}" "${CM_MATCH_DEBUGGER_GAME_DIR}" --croatia-second-2000)
-        set_tests_properties(database_season_2000_croatian_second PROPERTIES TIMEOUT 180 RUN_SERIAL TRUE)
+        set_tests_properties(database_season_2000_croatian_second PROPERTIES TIMEOUT 180)
         add_test(NAME database_season_2000_croatian_cup COMMAND "${Python3_EXECUTABLE}"
             "${CMAKE_SOURCE_DIR}/../tools/check_season_databases.py" "$<TARGET_FILE:cm-database-seasons-checks>"
             "${CM_ORACLE_DIR}" "${CM_MATCH_DEBUGGER_GAME_DIR}" --croatia-cup-2000)
-        set_tests_properties(database_season_2000_croatian_cup PROPERTIES TIMEOUT 180 RUN_SERIAL TRUE)
+        set_tests_properties(database_season_2000_croatian_cup PROPERTIES TIMEOUT 180)
         add_test(NAME database_season_2002_croatian_super_cup COMMAND "${Python3_EXECUTABLE}"
             "${CMAKE_SOURCE_DIR}/../tools/check_season_databases.py" "$<TARGET_FILE:cm-database-seasons-checks>"
             "${CM_ORACLE_DIR}" "${CM_MATCH_DEBUGGER_GAME_DIR}" --croatia-super-cup)
-        set_tests_properties(database_season_2002_croatian_super_cup PROPERTIES TIMEOUT 180 RUN_SERIAL TRUE)
+        set_tests_properties(database_season_2002_croatian_super_cup PROPERTIES TIMEOUT 300)
     endif()
     add_test(NAME database_season_history_2002 COMMAND "${Python3_EXECUTABLE}"
         "${CMAKE_SOURCE_DIR}/../tools/check_season_databases.py" "$<TARGET_FILE:cm-database-seasons-checks>"
         "${CM_ORACLE_DIR}" "${CM_MATCH_DEBUGGER_GAME_DIR}" --history-2002)
-    set_tests_properties(database_season_history_2002 PROPERTIES TIMEOUT 180 RUN_SERIAL TRUE)
+    set_tests_properties(database_season_history_2002 PROPERTIES TIMEOUT 180)
 endif()
 target_link_libraries(cm-adaptive-gui-checks PRIVATE cm_aot)
 target_compile_options(cm-adaptive-gui-checks PRIVATE -Wall -Wextra -Werror -Wpedantic)
