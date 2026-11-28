@@ -218,6 +218,8 @@ void score_groups(Cpu& c, const Frame& frame, const Stats& stats, const Person& 
 // least his age in days scaled at his current club); his seasons at his
 // current club add to his real-world appearances and goals.
 void import_careers(Cpu& c, const Frame& frame, const Stats& stats, std::uint32_t pool) {
+    // score_groups adds each player's relations with a full sort apiece.
+    RelationSeeding seeding;
     Program program{c};
     const auto rows = c.toc(slot::history_rows), count = c.toc(slot::history_count);
     const auto title = frame.at(0x4d4), groups = frame.at(0x1c4);

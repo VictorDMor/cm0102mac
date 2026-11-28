@@ -320,6 +320,9 @@ and the shared views in `player_stats_detail.hpp`. What it added:
   (distinct keys, no -1 target, persons in [0, 2^30)), where any sort gives
   the heapsort's rows, and falls back to the qsort otherwise
   (`RelationSeeding`; `CM_RELATION_SORT_ORIGINAL=1` forces the qsort). The
+  career import (`import_careers` -> `score_groups`) does the same per player
+  with a history abroad and runs under its own `RelationSeeding`; on the
+  2001/02 data it was ~11 s of a one-league New Game's load. The
   in-game callers (player regen, 0x1012e/0x1012f) still sort the whole array
   per insertion. Checks: the season checker's `CM_SEASON_WORLD_DIGEST`,
   `CM_SEASON_WORLD_DUMP` and `CM_SEASON_STACK_AUDIT` compare two runs; only

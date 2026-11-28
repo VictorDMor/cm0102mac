@@ -14,11 +14,13 @@ std::uint32_t affinity(guest::Cpu& c, std::uint32_t stats, std::uint32_t person,
 // 0x103094b0: how strongly a person's nations belong to `group` (0, 100,
 // 300, 500 or 1000); used to seed the relations of a new game.
 std::uint32_t group_score(guest::Cpu& c, std::uint32_t person, std::uint32_t group);
-// While one is alive (seed_relations, a New Game), add_relation's sorted
-// insertions sort the rows natively instead of heapsorting the whole array,
-// when the result is the original's: every key (person, target) distinct, no
-// target -1 (the comparator's wildcard) and persons in [0, 2^30), so the
-// comparator is a strict total order and any sort gives the heapsort's rows.
+// While one is alive (seed_relations and import_careers: New Game creation),
+// add_relation's sorted insertions sort the rows natively instead of
+// heapsorting the whole array, when the result is the original's: every key
+// (person, target) distinct, no target -1 (the comparator's wildcard) and
+// persons in [0, 2^30), so the comparator is a strict total order and any
+// sort gives the heapsort's rows. Nothing else may reorder or remove rows
+// while one is alive (a removal is detected and hands over to the qsort).
 // Otherwise, and with CM_RELATION_SORT_ORIGINAL set, the original qsort runs.
 // Not for the in-game callers: only New Game creation has been checked.
 class RelationSeeding {

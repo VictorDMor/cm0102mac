@@ -68,6 +68,7 @@ std::vector<Row> rows_at(Cpu& c, std::uint32_t address, std::uint32_t count) {
 // gives them, rows [0, sorted) being in that order already. False, with the
 // array untouched, when that order is not unique.
 bool sort_rows(Cpu& c, std::uint32_t relations, std::uint32_t sorted, std::uint32_t count) {
+    if (sorted >= count) return false;
     auto tail = rows_at(c, relations + sorted * Relation::size, count - sorted);
     if (!std::ranges::all_of(tail, &Row::plain)) return false;
     std::sort(tail.begin(), tail.end());
@@ -231,7 +232,8 @@ void add_relation(Cpu& c, std::uint32_t stats_address, std::uint32_t person, std
     leave(c, {{3, std::uint32_t(count)}, {4, stats.relations()}, {5, std::uint32_t(id)}});
     // Rows are only appended while seeding; anything else leaves the sorted
     // prefix unknown, and the qsort takes over.
-    if (seeding && seeding->sorted > std::uint32_t(count + 1)) seeding->original = true;
+    // More rows sorted than were here before this one: some were removed.
+    if (seeding && seeding->sorted > std::uint32_t(count)) seeding->original = true;
     if (nonzero(c, std::int8_t(sort)) && seeding && !seeding->original) {
         // The registers and the stack below this frame stay as the append
         // left them, not as the heapsort would (RelationSeeding).
